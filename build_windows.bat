@@ -24,7 +24,18 @@ python -m pip install -U pip
 pip install PySide6 pyinstaller
 
 echo.
-echo [Step 3/4] Building executable...
+echo [Step 3/4] Preparing data files...
+if not exist stock.csv (
+    echo Creating empty stock.csv...
+    type nul > stock.csv
+)
+if not exist history.csv (
+    echo Creating empty history.csv...
+    type nul > history.csv
+)
+
+echo.
+echo [Step 4/4] Building executable...
 pyinstaller --clean inventory_windows.spec
 
 echo.
