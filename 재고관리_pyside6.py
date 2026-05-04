@@ -532,10 +532,12 @@ def send_backup_email(cfg):
     )
     msg.attach(MIMEText(body, "plain", "utf-8"))
 
-    attachment = MIMEBase("application", "zip")
+    attachment = MIMEBase("application", "octet-stream")
     attachment.set_payload(zip_bytes)
     encoders.encode_base64(attachment)
+    attachment.add_header("Content-Type", f'application/octet-stream; name="{zip_name}"')
     attachment.add_header("Content-Disposition", f'attachment; filename="{zip_name}"')
+    attachment.add_header("Content-Transfer-Encoding", "base64")
     msg.attach(attachment)
 
     context = ssl.create_default_context()
