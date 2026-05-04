@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+# macOS
+.DS_Store
+
+# Binaries/archives
+obscura
+obscura-*.tar.gz
+*.tar.gz
+*.zip
+
+# IDE
+.vscode/
+.idea/
+*.swp
