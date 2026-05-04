@@ -3,26 +3,33 @@
 # Run: pyinstaller --clean inventory_windows.spec
 
 import os
+import sys
+import glob
 
 block_cipher = None
 
-# Only bundle data files that actually exist.
-# App creates CSVs automatically on first run if missing.
-datas = []
-for data_file in ['재고목록.csv', '입출고기록.csv']:
-    if os.path.exists(data_file):
-        datas.append((data_file, '.'))
+# Anaconda DLL fix: 생성된 exe가 Anaconda의 해당 DLL을 찾지 못하는 문제 해결
+binaries = []
+anaconda_base = getattr(sys, "base_prefix", None) or getattr(sys, "real_prefix", None)
+if anaconda_base:
+    for subdir in ["Library/bin", "DLLs"]:
+        dll_dir = os.path.join(anaconda_base, subdir)
+        if os.path.isdir(dll_dir):
+            for dll in glob.glob(os.path.join(dll_dir, "*.dll")):
+                binaries.append((dll, "."))
 
 a = Analysis(
-    ['ims_inventory.py'],
+    ["ims_inventory.py"],
     pathex=[os.path.abspath(SPECPATH)],
-    binaries=[],
-    datas=datas,
+    binaries=binaries,
+    datas=[],
     hiddenimports=[
-        'PySide6',
-        'PySide6.QtCore',
-        'PySide6.QtGui',
-        'PySide6.QtWidgets',
+        "ssl",
+        "_ssl",
+        "PySide6",
+        "PySide6.QtCore",
+        "PySide6.QtGui",
+        "PySide6.QtWidgets",
     ],
     hookspath=[],
     hooksconfig={},
@@ -41,7 +48,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='IMS_Inventory',
+    name="IMS_Inventory",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -62,5 +69,5 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name='IMS_Inventory',
+    name="IMS_Inventory",
 )
