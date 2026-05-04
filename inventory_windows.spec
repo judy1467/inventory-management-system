@@ -1,31 +1,23 @@
 # -*- mode: python ; coding: utf-8 -*-
-# PyInstaller spec for Windows executable build
+# PyInstaller spec for Windows executable build (pure Python/venv)
 # Run: pyinstaller --clean inventory_windows.spec
 
 import os
-import sys
-import glob
 
 block_cipher = None
 
-# Anaconda DLL fix: 생성된 exe가 Anaconda의 해당 DLL을 찾지 못하는 문제 해결
-binaries = []
-anaconda_base = getattr(sys, "base_prefix", None) or getattr(sys, "real_prefix", None)
-if anaconda_base:
-    for subdir in ["Library/bin", "DLLs"]:
-        dll_dir = os.path.join(anaconda_base, subdir)
-        if os.path.isdir(dll_dir):
-            for dll in glob.glob(os.path.join(dll_dir, "*.dll")):
-                binaries.append((dll, "."))
+# Only bundle data files that actually exist at build time (Pitfall 5 avoidance)
+datas = []
+for data_file in ["재고목록.csv", "입출고기록.csv"]:
+    if os.path.exists(data_file):
+        datas.append((data_file, "."))
 
 a = Analysis(
     ["ims_inventory.py"],
     pathex=[os.path.abspath(SPECPATH)],
-    binaries=binaries,
-    datas=[],
+    binaries=[],
+    datas=datas,
     hiddenimports=[
-        "ssl",
-        "_ssl",
         "PySide6",
         "PySide6.QtCore",
         "PySide6.QtGui",
