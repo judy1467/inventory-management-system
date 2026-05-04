@@ -5,6 +5,15 @@ import csv
 import os
 import sys
 import tempfile
+import json
+import zipfile
+import smtplib
+import ssl
+import io
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email.mime.text import MIMEText
+from email import encoders
 from datetime import datetime
 from typing import List, Dict
 
@@ -188,6 +197,8 @@ class ItemPickerDialog(QDialog):
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STOCK_CSV = os.path.join(BASE_DIR, "재고목록.csv")
 HISTORY_CSV = os.path.join(BASE_DIR, "입출고기록.csv")
+EMAIL_CONFIG_JSON = os.path.join(BASE_DIR, "email_config.json")
+LAST_BACKUP_FILE = os.path.join(BASE_DIR, ".last_backup")
 
 STOCK_FIELDS = [
     "자재명", "브랜드", "종류", "규격", "단위",
@@ -444,6 +455,99 @@ def ensure_files():
     if changed:
         write_csv(STOCK_CSV, STOCK_FIELDS, stock)
 
+
+def load_email_config():
+    if not os.path.exists(EMAIL_CONFIG_JSON):
+        return None
+    try:
+        with open(EMAIL_CONFIG_JSON, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def save_email_config(cfg):
+    try:
+        with open(EMAIL_CONFIG_JSON, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+
+
+def should_send_backup():
+    if not os.path.exists(LAST_BACKUP_FILE):
+        return True
+    try:
+        with open(LAST_BACKUP_FILE, "r", encoding="utf-8") as f:
+            last = f.read().strip()
+        today = datetime.now().strftime("%Y-%m-%d")
+        return last != today
+    except Exception:
+        return True
+
+
+def record_backup_sent():
+    try:
+        with open(LAST_BACKUP_FILE, "w", encoding="utf-8") as f:
+            f.write(datetime.now().strftime("%Y-%m-%d"))
+    except Exception:
+        pass
+
+
+def make_backup_zip():
+    mem_zip = io.BytesIO()
+    with zipfile.ZipFile(mem_zip, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        if os.path.exists(STOCK_CSV):
+            zf.write(STOCK_CSV, arcname=os.path.basename(STOCK_CSV))
+        if os.path.exists(HISTORY_CSV):
+            zf.write(HISTORY_CSV, arcname=os.path.basename(HISTORY_CSV))
+    mem_zip.seek(0)
+    return mem_zip.read(), f"IMS_백업_{datetime.now().strftime('%Y%m%d')}.zip"
+
+
+def send_backup_email(cfg):
+    smtp_server = cfg.get("smtp_server", "")
+    smtp_port = cfg.get("smtp_port", 587)
+    sender = cfg.get("sender", "")
+    password = cfg.get("password", "")
+    receiver = cfg.get("receiver", sender)
+
+    if not smtp_server or not sender or not password:
+        raise ValueError("이메일 설정이 부족합니다.")
+
+    zip_bytes, zip_name = make_backup_zip()
+    today_str = datetime.now().strftime("%Y-%m-%d")
+
+    msg = MIMEMultipart()
+    msg["From"] = sender
+    msg["To"] = receiver
+    msg["Subject"] = f"[IMS 백업] 재고목록 - {today_str}"
+
+    body = (
+        f"IMS 재고관리 시스템 자동 백업 메일입니다.\n\n"
+        f"발송 일시: {today_str}\n"
+        f"첨부파일: {zip_name}\n\n"
+        f"본 메일은 발송 전용 주소입니다. 답장을 하지 마세요."
+    )
+    msg.attach(MIMEText(body, "plain", "utf-8"))
+
+    attachment = MIMEBase("application", "zip")
+    attachment.set_payload(zip_bytes)
+    encoders.encode_base64(attachment)
+    attachment.add_header("Content-Disposition", f'attachment; filename="{zip_name}"')
+    msg.attach(attachment)
+
+    context = ssl.create_default_context()
+    if smtp_port == 465:
+        server = smtplib.SMTP_SSL(smtp_server, smtp_port, context=context, timeout=30)
+    else:
+        server = smtplib.SMTP(smtp_server, smtp_port, timeout=30)
+        server.starttls(context=context)
+    server.login(sender, password)
+    server.sendmail(sender, receiver, msg.as_string())
+    server.quit()
+    return True
 
 def read_csv(path: str) -> List[Dict[str, str]]:
     if not os.path.exists(path):
@@ -1069,6 +1173,99 @@ class ValuePickerDialog(QDialog):
         self.accept()
 
 
+EMAIL_PRESETS = {
+    "gmail": ("smtp.gmail.com", 587),
+    "naver": ("smtp.naver.com", 587),
+    "daum": ("smtp.daum.net", 465),
+    "custom": ("", 587),
+}
+
+
+class EmailConfigDialog(QDialog):
+    def __init__(self, parent=None, cfg=None):
+        super().__init__(parent)
+        self.setWindowTitle("이메일 백업 설정")
+        self.setModal(True)
+        self.resize(440, 340)
+        self.cfg = cfg or {}
+        layout = QVBoxLayout(self)
+
+        guide = QLabel("매일 첫 실행시 자동 이메일 백업을 보냅니다.")
+        guide.setStyleSheet("font-size: 12px; color: #6b7280;")
+        layout.addWidget(guide)
+
+        form = QFormLayout()
+        self.provider = QComboBox()
+        self.provider.addItems(["Gmail", "Naver (네이버)", "Daum (다음)", "직접입력"])
+        self.provider.currentIndexChanged.connect(self.on_provider_changed)
+        self.smtp_server = QLineEdit()
+        self.smtp_port = QSpinBox()
+        self.smtp_port.setRange(1, 65535)
+        self.smtp_port.setValue(587)
+        self.smtp_port.setGroupSeparatorShown(False)
+        self.sender_email = QLineEdit()
+        self.sender_email.setPlaceholderText("발송 이메일")
+        self.password = QLineEdit()
+        self.password.setEchoMode(QLineEdit.Password)
+        self.password.setPlaceholderText("앱 비밀번호")
+
+        form.addRow("제공자", self.provider)
+        form.addRow("SMTP 서버", self.smtp_server)
+        form.addRow("SMTP 포트", self.smtp_port)
+        form.addRow("이메일", self.sender_email)
+        form.addRow("비밀번호", self.password)
+        layout.addLayout(form)
+
+        test_btn = QPushButton("테스트 발송")
+        test_btn.setProperty("role", "secondary")
+        test_btn.clicked.connect(self.send_test)
+        layout.addWidget(test_btn)
+
+        btns = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        btns.accepted.connect(self.accept)
+        btns.rejected.connect(self.reject)
+        layout.addWidget(btns)
+
+        if self.cfg:
+            self.load_cfg(self.cfg)
+
+    def load_cfg(self, cfg):
+        provider = cfg.get("provider", "custom")
+        provider_map = {"gmail": 0, "naver": 1, "daum": 2, "custom": 3}
+        self.provider.setCurrentIndex(provider_map.get(provider, 3))
+        self.smtp_server.setText(cfg.get("smtp_server", ""))
+        self.smtp_port.setValue(cfg.get("smtp_port", 587))
+        self.sender_email.setText(cfg.get("sender", ""))
+        self.password.setText(cfg.get("password", ""))
+
+    def on_provider_changed(self, idx):
+        names = ["gmail", "naver", "daum", "custom"]
+        key = names[idx] if 0 <= idx < len(names) else "custom"
+        server, port = EMAIL_PRESETS.get(key, ("", 587))
+        if server:
+            self.smtp_server.setText(server)
+            self.smtp_port.setValue(port)
+
+    def get_cfg(self):
+        names = ["gmail", "naver", "daum", "custom"]
+        return {
+            "provider": names[self.provider.currentIndex()],
+            "smtp_server": self.smtp_server.text().strip(),
+            "smtp_port": self.smtp_port.value(),
+            "sender": self.sender_email.text().strip(),
+            "password": self.password.text().strip(),
+            "receiver": self.sender_email.text().strip(),
+        }
+
+    def send_test(self):
+        cfg = self.get_cfg()
+        try:
+            send_backup_email(cfg)
+            QMessageBox.information(self, "성공", "테스트 메일이 발송되었습니다.")
+        except Exception as e:
+            QMessageBox.critical(self, "실패", f"메일 발송에 실패했습니다.\n{str(e)}")
+
+
 class IMSInventoryApp(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -1099,6 +1296,7 @@ class IMSInventoryApp(QMainWindow):
         self.init_ui()
         self.load_all_data()
         self.refresh_all()
+        QTimer.singleShot(500, self.check_and_send_daily_backup)
 
     def init_ui(self):
         central = QWidget()
@@ -1475,6 +1673,11 @@ class IMSInventoryApp(QMainWindow):
         file_menu.addSeparator()
         file_menu.addAction(exit_action)
 
+        backup_menu = menu.addMenu("백업")
+        email_cfg_action = QAction("이메일 백업 설정", self)
+        email_cfg_action.triggered.connect(self.open_email_config)
+        backup_menu.addAction(email_cfg_action)
+
     def apply_styles(self):
         app = QApplication.instance()
         if app:
@@ -1775,6 +1978,31 @@ class IMSInventoryApp(QMainWindow):
         self.current_page = 1
         self.refresh_all()
         QMessageBox.information(self, "완료", "선택한 품목이 삭제되었습니다.")
+
+    def open_email_config(self):
+        cfg = load_email_config()
+        dlg = EmailConfigDialog(self, cfg)
+        if not dlg.exec():
+            return
+        new_cfg = dlg.get_cfg()
+        if not new_cfg.get("smtp_server") or not new_cfg.get("sender"):
+            QMessageBox.warning(self, "확인", "SMTP 서버와 이메일은 필수입니다.")
+            return
+        save_email_config(new_cfg)
+        QMessageBox.information(self, "저장 완료", "이메일 백업 설정이 저장되었습니다.")
+
+    def check_and_send_daily_backup(self):
+        if not should_send_backup():
+            return
+        cfg = load_email_config()
+        if not cfg:
+            return
+        try:
+            send_backup_email(cfg)
+            record_backup_sent()
+            QMessageBox.information(self, "백업 완료", "이메일로 오늘 백업을 보냈습니다.")
+        except Exception as e:
+            QMessageBox.warning(self, "백업 오류", f"이메일 백업 발송에 실패했습니다.\n{str(e)}")
 
     def process_inbound_selected(self):
         picker = ItemPickerDialog(self.stock_rows, self, "입고할 품목 선택")
