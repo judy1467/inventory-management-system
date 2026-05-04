@@ -4,6 +4,7 @@
 import csv
 import os
 import sys
+import tempfile
 from datetime import datetime
 from typing import List, Dict
 
@@ -457,11 +458,29 @@ def read_csv(path: str) -> List[Dict[str, str]]:
 
 
 def write_csv(path: str, fieldnames: List[str], rows: List[Dict[str, str]]):
-    with open(path, "w", encoding="utf-8-sig", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        for row in rows:
-            writer.writerow({key: row.get(key, "") for key in fieldnames})
+    dir_name = os.path.dirname(os.path.abspath(path)) or "."
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            dir=dir_name,
+            suffix=".tmp",
+            delete=False,
+            encoding="utf-8-sig",
+            newline="",
+        ) as f:
+            tmp_path = f.name
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({key: row.get(key, "") for key in fieldnames})
+        os.replace(tmp_path, path)
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        if tmp_path and os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        raise
 
 
 def to_int(value, default=0):
