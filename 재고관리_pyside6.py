@@ -7,7 +7,7 @@ import sys
 from datetime import datetime
 from typing import List, Dict
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QColor, QIntValidator, QPalette
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QDialog, QFormLayout, QFrame, QGridLayout,
@@ -195,7 +195,7 @@ STOCK_FIELDS = [
 
 HISTORY_FIELDS = [
     "일시", "구분", "자재명", "브랜드", "종류",
-    "규격", "수량", "단가", "금액", "담당자", "비고"
+    "규격", "수량", "단가", "금액", "담당자", "비고", "위치"
 ]
 
 FILTER_FIELD_LABELS = {
@@ -466,7 +466,7 @@ def write_csv(path: str, fieldnames: List[str], rows: List[Dict[str, str]]):
 
 def to_int(value, default=0):
     try:
-        return int(float(str(value).replace(',', '').strip()))
+        return int(str(value).replace(',', '').strip())
     except Exception:
         return default
 
@@ -780,6 +780,7 @@ def make_history_row(kind, item, qty, unit_price, staff="", note="", now_str=Non
         "금액": str(qty * unit_price),
         "담당자": staff,
         "비고": note,
+        "위치": item.get("위치", ""),
     }
 
 
@@ -871,6 +872,9 @@ class ItemDialog(QDialog):
                 widget.setGroupSeparatorShown(True)
             if isinstance(widget, QTextEdit):
                 widget.setFixedHeight(80)
+            if label in ("재고", "평균단가"):
+                widget.setEnabled(False)
+                widget.setStyleSheet("background: #e5e7eb; color: #6b7280;")
             self.inputs[label] = widget
             if label in self.selectable_fields:
                 row_wrap = QWidget()
@@ -934,7 +938,7 @@ class ItemDialog(QDialog):
 
 
 class InOutDialog(QDialog):
-    def __init__(self, title, parent=None, item=None):
+    def __init__(self, title, parent=None, item=None, is_outbound=False):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setModal(True)
@@ -943,12 +947,17 @@ class InOutDialog(QDialog):
 
         layout = QVBoxLayout(self)
 
-        info = QLabel(
-            f"브랜드: {self.item.get('브랜드','')}\n"
-            f"종류: {self.item.get('종류','')}\n"
-            f"품명: {self.item.get('자재명','')} ({self.item.get('규격','')})\n"
+        lines = [
+            f"브랜드: {self.item.get('브랜드','')}",
+            f"종류: {self.item.get('종류','')}",
+            f"품명: {self.item.get('자재명','')} ({self.item.get('규격','')})",
             f"재고: {self.item.get('재고','0')} {self.item.get('단위','')}"
-        )
+        ]
+        if is_outbound:
+            avg = to_int(self.item.get("평균단가", 0))
+            if avg > 0:
+                lines.append(f"현재 평균원가: {avg:,}원")
+        info = QLabel("\n".join(lines))
         info.setStyleSheet("font-size: 13px; line-height: 1.6;")
         layout.addWidget(info)
 
@@ -1059,6 +1068,14 @@ class IMSInventoryApp(QMainWindow):
         self.history_filters = {field_name: "전체" for field_name in self.history_filter_fields}
         self.history_filter_buttons = {}
 
+        # debounce timers
+        self._stock_search_timer = QTimer(self)
+        self._stock_search_timer.setSingleShot(True)
+        self._stock_search_timer.timeout.connect(self.on_stock_search_changed)
+        self._history_search_timer = QTimer(self)
+        self._history_search_timer.setSingleShot(True)
+        self._history_search_timer.timeout.connect(self.on_history_filters_changed)
+
         self.init_ui()
         self.load_all_data()
         self.refresh_all()
@@ -1113,7 +1130,7 @@ class IMSInventoryApp(QMainWindow):
         toolbar.setSpacing(8)
         self.stock_search = QLineEdit()
         self.stock_search.setPlaceholderText("브랜드, 종류, 품명, 규격, 비고, 위치로 빠르게 검색할 수 있습니다.")
-        self.stock_search.textChanged.connect(self.on_stock_search_changed)
+        self.stock_search.textChanged.connect(lambda: self._stock_search_timer.start(300))
         reset_btn = QPushButton("초기화")
         reset_btn.setProperty("role", "secondary")
         reset_btn.clicked.connect(self.reset_stock_search)
@@ -1305,7 +1322,7 @@ class IMSInventoryApp(QMainWindow):
         top.setSpacing(8)
         self.history_search = QLineEdit()
         self.history_search.setPlaceholderText("브랜드, 종류, 품명, 규격, 비고, 위치로 빠르게 검색할 수 있습니다.")
-        self.history_search.textChanged.connect(self.on_history_filters_changed)
+        self.history_search.textChanged.connect(lambda: self._history_search_timer.start(300))
         self.history_kind = QComboBox()
         self.history_kind.addItems(["전체", "입고", "출고"])
         self.history_kind.setSizeAdjustPolicy(QComboBox.AdjustToContents)
@@ -1616,7 +1633,7 @@ class IMSInventoryApp(QMainWindow):
         self.history_page_jump_input.setText(str(self.current_history_page))
         self.history_count_label.setText(f"조회 이력수: {total}건")
 
-    def get_selected_code(self):
+    def get_selected_index(self):
         row = self.stock_table.currentRow()
         if row < 0:
             return None
@@ -1626,7 +1643,7 @@ class IMSInventoryApp(QMainWindow):
         return item.data(Qt.UserRole)
 
     def get_selected_item(self):
-        index = self.get_selected_code()
+        index = self.get_selected_index()
         if index is None:
             return None
         if 0 <= index < len(self.stock_rows):
@@ -1682,8 +1699,12 @@ class IMSInventoryApp(QMainWindow):
         inbound_data = inout_dlg.get_data()
 
         create_new_item_inbound(self.stock_rows, self.history_rows, item_data, inbound_data)
-        write_csv(STOCK_CSV, STOCK_FIELDS, self.stock_rows)
-        write_csv(HISTORY_CSV, HISTORY_FIELDS, self.history_rows)
+        try:
+            write_csv(STOCK_CSV, STOCK_FIELDS, self.stock_rows)
+            write_csv(HISTORY_CSV, HISTORY_FIELDS, self.history_rows)
+        except Exception as e:
+            QMessageBox.critical(self, "저장 오류", f"입출고 기록 저장 중 오류가 발생했습니다:\n{str(e)}")
+            return
         self.refresh_all()
         QMessageBox.information(self, "완료", "신규 자재 입고가 등록되었습니다.")
 
@@ -1699,7 +1720,11 @@ class IMSInventoryApp(QMainWindow):
                 QMessageBox.warning(self, "확인", "품명은 필수입니다.")
                 return
             item.update(new_data)
-            write_csv(STOCK_CSV, STOCK_FIELDS, self.stock_rows)
+            try:
+                write_csv(STOCK_CSV, STOCK_FIELDS, self.stock_rows)
+            except Exception as e:
+                QMessageBox.critical(self, "저장 오류", f"재고 목록 저장 중 오류가 발생했습니다:\n{str(e)}")
+                return
             self.refresh_all()
 
     def process_inbound_selected(self):
@@ -1714,8 +1739,12 @@ class IMSInventoryApp(QMainWindow):
         if dlg.exec():
             data = dlg.get_data()
             apply_inbound_to_stock(self.stock_rows, self.history_rows, item_index, data)
-            write_csv(STOCK_CSV, STOCK_FIELDS, self.stock_rows)
-            write_csv(HISTORY_CSV, HISTORY_FIELDS, self.history_rows)
+            try:
+                write_csv(STOCK_CSV, STOCK_FIELDS, self.stock_rows)
+                write_csv(HISTORY_CSV, HISTORY_FIELDS, self.history_rows)
+            except Exception as e:
+                QMessageBox.critical(self, "저장 오류", f"입출고 기록 저장 중 오류가 발생했습니다:\n{str(e)}")
+                return
             self.refresh_all()
             QMessageBox.information(self, "완료", "입고 처리되었습니다.")
 
@@ -1727,8 +1756,8 @@ class IMSInventoryApp(QMainWindow):
         if item_index is None:
             return
         item = self.stock_rows[item_index]
-        dlg = InOutDialog("출고 등록", self, item)
-        dlg.price.setValue(to_int(item.get("평균단가")))
+        dlg = InOutDialog("출고 등록", self, item, is_outbound=True)
+        dlg.price.setValue(0)
         if dlg.exec():
             data = dlg.get_data()
             try:
@@ -1736,8 +1765,12 @@ class IMSInventoryApp(QMainWindow):
             except ValueError as e:
                 QMessageBox.warning(self, "오류", str(e))
                 return
-            write_csv(STOCK_CSV, STOCK_FIELDS, self.stock_rows)
-            write_csv(HISTORY_CSV, HISTORY_FIELDS, self.history_rows)
+            try:
+                write_csv(STOCK_CSV, STOCK_FIELDS, self.stock_rows)
+                write_csv(HISTORY_CSV, HISTORY_FIELDS, self.history_rows)
+            except Exception as e:
+                QMessageBox.critical(self, "저장 오류", f"입출고 기록 저장 중 오류가 발생했습니다:\n{str(e)}")
+                return
             self.refresh_all()
             QMessageBox.information(self, "완료", "출고 처리되었습니다.")
 
@@ -1745,20 +1778,49 @@ class IMSInventoryApp(QMainWindow):
         path, _ = QFileDialog.getSaveFileName(self, "재고 CSV 저장", os.path.join(BASE_DIR, "재고목록_백업.csv"), "CSV Files (*.csv)")
         if not path:
             return
-        write_csv(path, STOCK_FIELDS, self.stock_rows)
-        QMessageBox.information(self, "완료", f"저장되었습니다.\n{path}")
+        try:
+            write_csv(path, STOCK_FIELDS, self.stock_rows)
+            QMessageBox.information(self, "완료", f"저장되었습니다.\n{path}")
+        except Exception as e:
+            QMessageBox.critical(self, "저장 오류", f"CSV 저장 중 오류가 발생했습니다:\n{str(e)}")
 
     def import_stock_csv(self):
         path, _ = QFileDialog.getOpenFileName(self, "재고 CSV 불러오기", BASE_DIR, "CSV Files (*.csv)")
         if not path:
             return
-        rows = read_csv(path)
+        try:
+            rows = read_csv(path)
+        except Exception as e:
+            QMessageBox.critical(self, "불러오기 오류", f"CSV 파일을 읽을 수 없습니다:\n{str(e)}")
+            return
+        if not rows:
+            QMessageBox.information(self, "안내", "CSV에 데이터가 없습니다.")
+            return
+        first = rows[0]
+        if "자재명" not in first:
+            QMessageBox.warning(self, "검증 오류", "CSV에 '자재명' 컬럼이 없습니다.\n올바른 재고목롢 CSV 파일인지 확인해 주세요.")
+            return
+        # 백업
+        if os.path.exists(STOCK_CSV):
+            backup_path = os.path.join(BASE_DIR, f"재고목롢_백업_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
+            try:
+                import shutil
+                shutil.copy2(STOCK_CSV, backup_path)
+            except Exception:
+                pass
         for row in rows:
             for f in STOCK_FIELDS:
                 row.setdefault(f, "")
         self.stock_rows = rows
-        write_csv(STOCK_CSV, STOCK_FIELDS, self.stock_rows)
-        self.history_rows = read_csv(HISTORY_CSV)
+        try:
+            write_csv(STOCK_CSV, STOCK_FIELDS, self.stock_rows)
+        except Exception as e:
+            QMessageBox.critical(self, "저장 오류", f"CSV 저장 중 오류가 발생했습니다:\n{str(e)}")
+            return
+        try:
+            self.history_rows = read_csv(HISTORY_CSV)
+        except Exception:
+            self.history_rows = []
         self.refresh_all()
         QMessageBox.information(self, "완료", "CSV를 불러왔습니다.")
 
