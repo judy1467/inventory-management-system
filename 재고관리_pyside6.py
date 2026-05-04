@@ -416,12 +416,7 @@ def build_fixed_palette():
 
 def ensure_files():
     if not os.path.exists(STOCK_CSV):
-        rows = [
-            {"자재명": "육각볼트", "브랜드": "삼성볼트", "종류": "볼트/너트", "규격": "M10x30", "단위": "개", "재고": "250", "평균단가": "150", "사진경로": "", "비고": "", "위치": "A-01"},
-            {"자재명": "육각볼트", "브랜드": "삼성볼트", "종류": "볼트/너트", "규격": "M12x40", "단위": "개", "재고": "180", "평균단가": "200", "사진경로": "", "비고": "", "위치": "A-01"},
-            {"자재명": "드릴비트", "브랜드": "보쉬", "종류": "절삭공구", "규격": "Φ8mm", "단위": "개", "재고": "45", "평균단가": "3500", "사진경로": "", "비고": "HSS", "위치": "B-02"},
-        ]
-        write_csv(STOCK_CSV, STOCK_FIELDS, rows)
+        write_csv(STOCK_CSV, STOCK_FIELDS, [])
 
     if not os.path.exists(HISTORY_CSV):
         write_csv(HISTORY_CSV, HISTORY_FIELDS, [])
