@@ -6,15 +6,18 @@ import os
 
 block_cipher = None
 
+# Only bundle data files that actually exist.
+# App creates CSVs automatically on first run if missing.
+datas = []
+for data_file in ['재고목록.csv', '입출고기록.csv']:
+    if os.path.exists(data_file):
+        datas.append((data_file, '.'))
+
 a = Analysis(
     ['ims_inventory.py'],
     pathex=[os.path.abspath(SPECPATH)],
     binaries=[],
-    datas=[
-        ('stock.csv', '.'),
-        ('history.csv', '.'),
-        ('email_config.json', '.'),
-    ],
+    datas=datas,
     hiddenimports=[
         'PySide6',
         'PySide6.QtCore',
