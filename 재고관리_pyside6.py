@@ -2,21 +2,23 @@
 # -*- coding: utf-8 -*-
 
 import csv
-import os
-import sys
-import tempfile
+import io
 import json
-import zipfile
+import math
+import os
+import shutil
 import smtplib
 import ssl
-import io
-from email.mime.multipart import MIMEMultipart
-from email.mime.base import MIMEBase
-from email.mime.application import MIMEApplication
-from email.mime.text import MIMEText
-from email import encoders
+import sys
+import tempfile
+import traceback
+import zipfile
 from datetime import datetime
 from typing import List, Dict
+
+from email.mime.application import MIMEApplication
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QColor, QIntValidator, QPalette
@@ -472,7 +474,6 @@ def save_email_config(cfg):
         with open(EMAIL_CONFIG_JSON, "w", encoding="utf-8") as f:
             json.dump(cfg, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        import traceback
         traceback.print_exc()
 
 
@@ -574,7 +575,6 @@ def write_csv(path: str, fieldnames: List[str], rows: List[Dict[str, str]]):
                 writer.writerow({key: row.get(key, "") for key in fieldnames})
         os.replace(tmp_path, path)
     except Exception:
-        import traceback
         traceback.print_exc()
         if tmp_path and os.path.exists(tmp_path):
             os.remove(tmp_path)
@@ -583,7 +583,6 @@ def write_csv(path: str, fieldnames: List[str], rows: List[Dict[str, str]]):
 
 def round_half_up(value):
     """함수_올림(타일2 반올림): 0.5 반디만 할 때 항상 올림기."""
-    import math
     return math.floor(value + 0.5)
 
 
@@ -1455,7 +1454,7 @@ class IMSInventoryApp(QMainWindow):
         page_group_layout.addWidget(self.page_label)
         page_group_layout.addWidget(self.page_jump_input)
         page_group_layout.addWidget(page_jump_btn)
-        set_equal_button_widths(page_jump_btn, prev_btn, next_btn, edit_btn, del_btn, width_multiplier=3)
+        set_equal_button_widths(page_jump_btn, prev_btn, next_btn, edit_btn, del_btn)
 
         bottom.addWidget(page_group)
         bottom.addStretch()
@@ -1648,7 +1647,7 @@ class IMSInventoryApp(QMainWindow):
         history_page_group_layout.addWidget(self.history_page_label)
         history_page_group_layout.addWidget(self.history_page_jump_input)
         history_page_group_layout.addWidget(history_page_jump_btn)
-        set_equal_button_widths(history_page_jump_btn, history_prev_btn, history_next_btn, width_multiplier=3)
+        set_equal_button_widths(history_page_jump_btn, history_prev_btn, history_next_btn)
 
         bottom.addWidget(history_page_group)
         bottom.addStretch()
@@ -2080,7 +2079,6 @@ class IMSInventoryApp(QMainWindow):
         if os.path.exists(STOCK_CSV):
             backup_path = os.path.join(BASE_DIR, f"재고목록_백업_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
             try:
-                import shutil
                 shutil.copy2(STOCK_CSV, backup_path)
             except Exception:
                 pass
