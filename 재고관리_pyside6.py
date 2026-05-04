@@ -12,6 +12,7 @@ import ssl
 import io
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
+from email.mime.application import MIMEApplication
 from email.mime.text import MIMEText
 from email import encoders
 from datetime import datetime
@@ -532,12 +533,8 @@ def send_backup_email(cfg):
     )
     msg.attach(MIMEText(body, "plain", "utf-8"))
 
-    attachment = MIMEBase("application", "octet-stream")
-    attachment.set_payload(zip_bytes)
-    encoders.encode_base64(attachment)
-    attachment.add_header("Content-Type", f'application/octet-stream; name="{zip_name}"')
-    attachment.add_header("Content-Disposition", f'attachment; filename="{zip_name}"')
-    attachment.add_header("Content-Transfer-Encoding", "base64")
+    attachment = MIMEApplication(zip_bytes, name=zip_name)
+    attachment.add_header("Content-Disposition", "attachment", filename=zip_name)
     msg.attach(attachment)
 
     context = ssl.create_default_context()
