@@ -478,6 +478,12 @@ def write_csv(path: str, fieldnames: List[str], rows: List[Dict[str, str]]):
         raise
 
 
+def round_half_up(value):
+    """함수_올림(타일2 반올림): 0.5 반디만 할 때 항상 올림기."""
+    import math
+    return math.floor(value + 0.5)
+
+
 def to_int(value, default=0):
     try:
         return int(str(value).replace(',', '').strip())
@@ -805,7 +811,7 @@ def apply_inbound_to_stock(stock_rows, history_rows, item_index, inbound_data, n
     qty_in = to_int(inbound_data.get("수량"))
     price_in = to_int(inbound_data.get("단가"))
     total_qty = qty_old + qty_in
-    new_avg = round(((qty_old * avg_old) + (qty_in * price_in)) / total_qty) if total_qty else 0
+    new_avg = round_half_up(((qty_old * avg_old) + (qty_in * price_in)) / total_qty) if total_qty else 0
     item["재고"] = str(total_qty)
     item["평균단가"] = str(new_avg)
     history_rows.append(make_history_row(
@@ -1245,17 +1251,21 @@ class IMSInventoryApp(QMainWindow):
         edit_btn = QPushButton("변경")
         edit_btn.setProperty("role", "primary-strong")
         edit_btn.clicked.connect(self.edit_selected_item)
+        del_btn = QPushButton("삭제")
+        del_btn.setProperty("role", "secondary")
+        del_btn.clicked.connect(self.delete_selected_item)
         page_group, page_group_layout = build_bottom_bar_group()
         page_group_layout.addWidget(self.page_label)
         page_group_layout.addWidget(self.page_jump_input)
         page_group_layout.addWidget(page_jump_btn)
-        set_equal_button_widths(page_jump_btn, prev_btn, next_btn, edit_btn, width_multiplier=3)
+        set_equal_button_widths(page_jump_btn, prev_btn, next_btn, edit_btn, del_btn, width_multiplier=3)
 
         bottom.addWidget(page_group)
         bottom.addStretch()
         bottom.addWidget(prev_btn)
         bottom.addWidget(next_btn)
         bottom.addWidget(edit_btn)
+        bottom.addWidget(del_btn)
         layout.addWidget(bottom_row)
 
         return tab
@@ -1741,6 +1751,31 @@ class IMSInventoryApp(QMainWindow):
                 return
             self.refresh_all()
 
+    def delete_selected_item(self):
+        index = self.get_selected_index()
+        if index is None:
+            QMessageBox.information(self, "안내", "삭제할 자재를 먼저 선택하세요.")
+            return
+        item = self.stock_rows[index]
+        item_name = item.get("자재명", "")
+        reply = QMessageBox.question(
+            self, "삭제 확인",
+            f"품목: {item_name}\n경고: 이 품목을 삭제하면 되돌릴 수 없습니다.\n정말로 삭제하시겠습니까?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+        del self.stock_rows[index]
+        try:
+            write_csv(STOCK_CSV, STOCK_FIELDS, self.stock_rows)
+        except Exception as e:
+            QMessageBox.critical(self, "저장 오류", f"재고 목록 저장 중 오류가 발생했습니다:\n{str(e)}")
+            return
+        self.current_page = 1
+        self.refresh_all()
+        QMessageBox.information(self, "완료", "선택한 품목이 삭제되었습니다.")
+
     def process_inbound_selected(self):
         picker = ItemPickerDialog(self.stock_rows, self, "입고할 품목 선택")
         if not picker.exec():
@@ -1812,11 +1847,11 @@ class IMSInventoryApp(QMainWindow):
             return
         first = rows[0]
         if "자재명" not in first:
-            QMessageBox.warning(self, "검증 오류", "CSV에 '자재명' 컬럼이 없습니다.\n올바른 재고목롢 CSV 파일인지 확인해 주세요.")
+            QMessageBox.warning(self, "검증 오류", "CSV에 '자재명' 컬럼이 없습니다.\n올바른 재고목록 CSV 파일인지 확인해 주세요.")
             return
         # 백업
         if os.path.exists(STOCK_CSV):
-            backup_path = os.path.join(BASE_DIR, f"재고목롢_백업_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
+            backup_path = os.path.join(BASE_DIR, f"재고목록_백업_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
             try:
                 import shutil
                 shutil.copy2(STOCK_CSV, backup_path)
