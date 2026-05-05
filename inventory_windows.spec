@@ -8,7 +8,7 @@ block_cipher = None
 
 # Only bundle data files that actually exist at build time (Pitfall 5 avoidance)
 datas = []
-for data_file in ["재고목록.csv", "입출고기록.csv"]:
+for data_file in ["inventory.csv", "transactions.csv"]:
     if os.path.exists(data_file):
         datas.append((data_file, "."))
 

@@ -55,7 +55,7 @@ if exist dist\IMS_Inventory\IMS_Inventory.exe (
     echo BUILD SUCCESS
     echo Output: dist\IMS_Inventory\
     echo.
-    echo NOTE: Data files (재고목록.csv, 입출고기록.csv)
+    echo NOTE: Data files (inventory.csv, transactions.csv)
     echo       are created automatically on first run.
     echo       If you have existing data, copy those CSV files
     echo       into the dist\IMS_Inventory\ folder.
