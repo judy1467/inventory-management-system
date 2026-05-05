@@ -1,21 +1,41 @@
 # -*- mode: python ; coding: utf-8 -*-
-# PyInstaller spec for Windows executable build (pure Python/venv)
+# PyInstaller spec for Windows executable build
+# REQUIRES: Official Python from python.org (NOT Anaconda)
 # Run: pyinstaller --clean inventory_windows.spec
 
 import os
+import sys
+
+# Verify we're NOT running from Anaconda
+if 'conda' in sys.executable.lower() or 'anaconda' in sys.executable.lower():
+    print("=" * 60)
+    print("ERROR: Anaconda Python detected!")
+    print(f"Current Python: {sys.executable}")
+    print()
+    print("This build MUST use official Python from python.org")
+    print("to avoid DLL conflicts.")
+    print()
+    print("Please:")
+    print("1. Install official Python from https://python.org")
+    print("2. Run build_windows.bat (it will find official Python)")
+    print("=" * 60)
+    sys.exit(1)
 
 block_cipher = None
 
-# Only bundle data files that actually exist at build time (Pitfall 5 avoidance)
+# Bundle data files if they exist
 datas = []
 for data_file in ["inventory.csv", "transactions.csv"]:
     if os.path.exists(data_file):
         datas.append((data_file, "."))
 
+# NO binaries from Anaconda - let PyInstaller handle everything automatically
+binaries = []
+
 a = Analysis(
     ["ims_inventory.py"],
     pathex=[os.path.abspath(SPECPATH)],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
     hiddenimports=[
         "PySide6",
@@ -26,7 +46,12 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        # Explicitly exclude Anaconda packages
+        "conda",
+        "anaconda_navigator",
+        "_anaconda_numpy_init",
+    ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
