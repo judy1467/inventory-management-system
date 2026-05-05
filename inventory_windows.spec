@@ -1,25 +1,23 @@
 # -*- mode: python ; coding: utf-8 -*-
 # PyInstaller spec for Windows executable build
-# REQUIRES: Official Python from python.org (NOT Anaconda)
-# Run: pyinstaller --clean inventory_windows.spec
+# Works with both official Python and Anaconda (with warnings)
 
 import os
 import sys
 
-# Verify we're NOT running from Anaconda
-if 'conda' in sys.executable.lower() or 'anaconda' in sys.executable.lower():
+# Check if running from Anaconda (warn but don't block)
+conda_meta_exists = os.path.exists(os.path.join(sys.prefix, 'conda-meta'))
+is_anaconda = conda_meta_exists or 'anaconda' in sys.version.lower()
+
+if is_anaconda:
     print("=" * 60)
-    print("ERROR: Anaconda Python detected!")
-    print(f"Current Python: {sys.executable}")
+    print("WARNING: Building with Anaconda Python")
+    print(f"Python: {sys.executable}")
     print()
-    print("This build MUST use official Python from python.org")
-    print("to avoid DLL conflicts.")
-    print()
-    print("Please:")
-    print("1. Install official Python from https://python.org")
-    print("2. Run build_windows.bat (it will find official Python)")
+    print("This may cause DLL conflicts. If the build fails,")
+    print("install official Python from https://python.org")
     print("=" * 60)
-    sys.exit(1)
+    print()
 
 block_cipher = None
 
@@ -29,8 +27,29 @@ for data_file in ["inventory.csv", "transactions.csv"]:
     if os.path.exists(data_file):
         datas.append((data_file, "."))
 
-# NO binaries from Anaconda - let PyInstaller handle everything automatically
+# If using Anaconda, try to bundle common missing DLLs
 binaries = []
+if is_anaconda and sys.platform == 'win32':
+    print("Attempting to locate Anaconda DLLs...")
+    anaconda_dll_dirs = [
+        os.path.join(sys.prefix, 'Library', 'bin'),
+        os.path.join(sys.prefix, 'DLLs'),
+    ]
+    
+    required_dlls = [
+        'libcrypto-3-x64.dll',
+        'libssl-3-x64.dll', 
+        'liblzma.dll',
+        'libbz2.dll',
+    ]
+    
+    for dll_dir in anaconda_dll_dirs:
+        if os.path.exists(dll_dir):
+            for dll_name in required_dlls:
+                dll_path = os.path.join(dll_dir, dll_name)
+                if os.path.exists(dll_path):
+                    binaries.append((dll_path, '.'))
+                    print(f"  Found: {dll_name}")
 
 a = Analysis(
     ["ims_inventory.py"],
@@ -46,12 +65,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[
-        # Explicitly exclude Anaconda packages
-        "conda",
-        "anaconda_navigator",
-        "_anaconda_numpy_init",
-    ],
+    excludes=[],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
