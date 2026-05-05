@@ -34,6 +34,17 @@ dist/
 
 ## Troubleshooting
 
+### "WARNING: Cache entry deserialization failed"
+
+This is a pip cache issue (usually from mixing Python versions).
+The build script already uses `--no-cache-dir` to avoid this.
+
+If you still see this warning, you can manually clear the pip cache:
+```batch
+python -m pip cache purge
+```
+The warning is harmless - the build will complete successfully.
+
 ### "Python not found in PATH"
 
 Install Python from https://www.python.org/downloads/

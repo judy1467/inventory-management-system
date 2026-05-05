@@ -9,10 +9,12 @@ echo ============================================
 echo.
 
 REM Clean previous builds
+echo Cleaning previous build files...
 if exist venv rmdir /s /q venv
 if exist build rmdir /s /q build
 if exist dist rmdir /s /q dist
 if exist *.spec del /q *.spec
+echo.
 
 REM Find Python
 set PYTHON=
@@ -52,8 +54,8 @@ if %ERRORLEVEL% NEQ 0 (
 REM Activate and upgrade pip
 echo [2/4] Installing dependencies...
 call venv\Scripts\activate.bat
-python -m pip install --upgrade pip --quiet
-python -m pip install PySide6 pyinstaller --quiet
+python -m pip install --upgrade pip --no-cache-dir --quiet
+python -m pip install PySide6 pyinstaller --no-cache-dir --quiet
 
 REM Build executable
 echo [3/4] Building executable...
