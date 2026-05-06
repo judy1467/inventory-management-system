@@ -1914,14 +1914,40 @@ class IMSInventoryApp(QMainWindow):
         if not item_dlg.exec():
             return
         item_data = item_dlg.get_data()
-        if not item_data.get("자재명", "").strip():
-            QMessageBox.warning(self, "확인", "품명은 필수입니다.")
+        
+        # 신규 품목 입고 등록 시 필수 입력 검증
+        required_item_fields = {
+            "브랜드": "브랜드",
+            "종류": "종류",
+            "자재명": "품명",
+            "규격": "규격",
+            "단위": "단위",
+            "위치": "위치"
+        }
+        
+        missing_fields = []
+        for field_key, field_label in required_item_fields.items():
+            if not item_data.get(field_key, "").strip():
+                missing_fields.append(field_label)
+        
+        if missing_fields:
+            QMessageBox.warning(self, "필수 입력 확인", 
+                f"다음 항목을 입력해주세요:\n• {', '.join(missing_fields)}")
             return
 
         inout_dlg = InOutDialog(NEW_ITEM_INBOUND_DIALOG_TITLE, self, item_data)
         if not inout_dlg.exec():
             return
         inbound_data = inout_dlg.get_data()
+        
+        # 수량, 단가 필수 검증
+        if inbound_data.get("수량", 0) <= 0:
+            QMessageBox.warning(self, "필수 입력 확인", "수량을 1개 이상 입력해주세요.")
+            return
+        
+        if inbound_data.get("단가", 0) <= 0:
+            QMessageBox.warning(self, "필수 입력 확인", "단가를 입력해주세요.")
+            return
 
         create_new_item_inbound(self.stock_rows, self.history_rows, item_data, inbound_data)
         try:
