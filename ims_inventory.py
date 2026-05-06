@@ -197,7 +197,21 @@ class ItemPickerDialog(QDialog):
         self.selected_index = item.data(Qt.UserRole)
         self.accept()
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+def get_base_dir():
+    """
+    실행 파일의 기준 디렉토리를 반환
+    - PyInstaller 빌드: .exe 파일이 있는 폴더 (사용자가 접근 가능한 위치)
+    - 개발 환경: 스크립트 파일이 있는 폴더
+    """
+    if getattr(sys, 'frozen', False):
+        # PyInstaller로 빌드된 실행 파일
+        return os.path.dirname(sys.executable)
+    else:
+        # 개발 환경 (Python 스크립트)
+        return os.path.dirname(os.path.abspath(__file__))
+
+
+BASE_DIR = get_base_dir()
 STOCK_CSV = os.path.join(BASE_DIR, "inventory.csv")
 HISTORY_CSV = os.path.join(BASE_DIR, "transactions.csv")
 EMAIL_CONFIG_JSON = os.path.join(BASE_DIR, "email_config.json")

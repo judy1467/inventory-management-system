@@ -2,7 +2,7 @@ import os
 import importlib.util
 import unittest
 
-MODULE_PATH = "/Users/mini/공구상가_재고관리/재고관리_pyside6.py"
+MODULE_PATH = "/Users/mini/공구상가_재고관리/ims_inventory.py"
 spec = importlib.util.spec_from_file_location("inventory_app", MODULE_PATH)
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
