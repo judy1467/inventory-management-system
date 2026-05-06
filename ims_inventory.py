@@ -1471,9 +1471,9 @@ class IMSInventoryApp(QMainWindow):
         set_equal_button_widths(page_jump_btn, prev_btn, next_btn, edit_btn, del_btn)
 
         bottom.addWidget(page_group)
-        bottom.addStretch()
         bottom.addWidget(prev_btn)
         bottom.addWidget(next_btn)
+        bottom.addStretch()
         bottom.addWidget(edit_btn)
         bottom.addWidget(del_btn)
         layout.addWidget(bottom_row)
@@ -1664,9 +1664,9 @@ class IMSInventoryApp(QMainWindow):
         set_equal_button_widths(history_page_jump_btn, history_prev_btn, history_next_btn)
 
         bottom.addWidget(history_page_group)
-        bottom.addStretch()
         bottom.addWidget(history_prev_btn)
         bottom.addWidget(history_next_btn)
+        bottom.addStretch()
         layout.addWidget(bottom_row)
         return tab
 
@@ -1675,18 +1675,9 @@ class IMSInventoryApp(QMainWindow):
         menu = self.menuBar()
         backup_menu = menu.addMenu("백업")
         
-        save_action = QAction("CSV 백업 저장", self)
-        save_action.triggered.connect(self.export_stock_csv)
-        
-        load_action = QAction("CSV 불러오기", self)
-        load_action.triggered.connect(self.import_stock_csv)
-        
         email_cfg_action = QAction("이메일 백업 설정", self)
         email_cfg_action.triggered.connect(self.open_email_config)
         
-        backup_menu.addAction(save_action)
-        backup_menu.addAction(load_action)
-        backup_menu.addSeparator()
         backup_menu.addAction(email_cfg_action)
 
     def apply_styles(self):
