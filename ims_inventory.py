@@ -21,7 +21,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QColor, QIntValidator, QPalette
+from PySide6.QtGui import QAction, QColor, QIntValidator, QPalette
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QDialog, QFormLayout, QFrame, QGridLayout,
     QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton,
@@ -1325,6 +1325,7 @@ class IMSInventoryApp(QMainWindow):
         root.addWidget(self.tabs)
 
         self.apply_styles()
+        self.build_menu()
 
     def section_title(self, title, desc=""):
         wrap = QWidget()
@@ -1669,6 +1670,24 @@ class IMSInventoryApp(QMainWindow):
         layout.addWidget(bottom_row)
         return tab
 
+
+    def build_menu(self):
+        menu = self.menuBar()
+        backup_menu = menu.addMenu("백업")
+        
+        save_action = QAction("CSV 백업 저장", self)
+        save_action.triggered.connect(self.export_stock_csv)
+        
+        load_action = QAction("CSV 불러오기", self)
+        load_action.triggered.connect(self.import_stock_csv)
+        
+        email_cfg_action = QAction("이메일 백업 설정", self)
+        email_cfg_action.triggered.connect(self.open_email_config)
+        
+        backup_menu.addAction(save_action)
+        backup_menu.addAction(load_action)
+        backup_menu.addSeparator()
+        backup_menu.addAction(email_cfg_action)
 
     def apply_styles(self):
         app = QApplication.instance()
