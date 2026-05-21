@@ -1807,7 +1807,7 @@ class IMSInventoryApp(QMainWindow):
         self.setStyleSheet(app_stylesheet())
 
     def prepare_table(self, table: QTableWidget):
-        table.setAlternatingRowColors(True)
+        table.setAlternatingRowColors(False)
         table.verticalHeader().setVisible(False)
         table.verticalHeader().setDefaultSectionSize(36)
         table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
@@ -1923,11 +1923,11 @@ class IMSInventoryApp(QMainWindow):
                 f"{to_int(row.get('평균단가', 0)):,}", row.get("위치", ""), row.get("비고", "")
             ]
             low_stock = to_int(row.get("재고", 0)) <= 5
+            row_bg = QColor("#fee2e2") if low_stock else (QColor("#f8fafc") if i % 2 == 1 else QColor("#ffffff"))
             for col, val in enumerate(values):
                 item = QTableWidgetItem(val)
                 item.setData(Qt.UserRole, source_index)
-                if low_stock:
-                    item.setBackground(QColor("#fee2e2"))
+                item.setBackground(row_bg)
                 if col in (1, 3):
                     item.setForeground(QColor("#2563eb"))
                 if col in (5, 7):
