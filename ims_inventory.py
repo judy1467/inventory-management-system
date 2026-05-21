@@ -1765,8 +1765,12 @@ class IMSInventoryApp(QMainWindow):
         history_edit_btn = QPushButton("변경")
         history_edit_btn.setProperty("role", "primary-strong")
         history_edit_btn.clicked.connect(self.edit_selected_history)
-        set_equal_button_widths(history_edit_btn)
+        history_del_btn = QPushButton("삭제")
+        history_del_btn.setProperty("role", "secondary")
+        history_del_btn.clicked.connect(self.delete_selected_history)
+        set_equal_button_widths(history_edit_btn, history_del_btn)
         bottom.addWidget(history_edit_btn)
+        bottom.addWidget(history_del_btn)
         layout.addWidget(bottom_row)
         return tab
 
@@ -2163,6 +2167,45 @@ class IMSInventoryApp(QMainWindow):
             return
         self.refresh_history_table()
         QMessageBox.information(self, "완료", "입출고 기록이 수정되었습니다.")
+
+    def delete_selected_history(self):
+        history_row = self.get_selected_history_row()
+        if history_row is None:
+            QMessageBox.information(self, "안내", "삭제할 기록을 먼저 선택하세요.")
+            return
+        kind = history_row.get("구분", "")
+        item_name = history_row.get("자재명", "")
+        date_str = history_row.get("일시", "")
+        qty = history_row.get("수량", "")
+        reply = QMessageBox.question(
+            self, "삭제 확인",
+            f"구분: {kind}\n품명: {item_name}\n일시: {date_str}\n수량: {qty}\n\n"
+            f"이 기록을 삭제하면 되돌릴 수 없습니다.\n정말 삭제하시겠습니까?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+        target_index = None
+        for i, hrow in enumerate(self.history_rows):
+            if (hrow.get("일시") == history_row.get("일시") and
+                    hrow.get("자재명") == history_row.get("자재명") and
+                    hrow.get("구분") == history_row.get("구분") and
+                    hrow.get("수량") == history_row.get("수량") and
+                    hrow.get("단가") == history_row.get("단가")):
+                target_index = i
+                break
+        if target_index is None:
+            QMessageBox.warning(self, "오류", "삭제할 기록을 찾을 수 없습니다.")
+            return
+        del self.history_rows[target_index]
+        try:
+            write_csv(HISTORY_CSV, HISTORY_FIELDS, self.history_rows)
+        except Exception as e:
+            QMessageBox.critical(self, "저장 오류", f"기록 저장 중 오류가 발생했습니다:\n{str(e)}")
+            return
+        self.refresh_history_table()
+        QMessageBox.information(self, "완료", "입출고 기록이 삭제되었습니다.")
 
     def open_email_config(self):
         cfg = load_email_config()
