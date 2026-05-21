@@ -162,7 +162,7 @@ class ItemPickerDialog(QDialog):
         rows = self.filtered_items()
         self.table.setRowCount(len(rows))
         self.count_label.setText(f"조회 품목수: {len(rows)}건")
-        widths = [50, 110, 110, 170, 110, 85, 65, 95, 90, 180]
+        widths = [50, 143, 143, 221, 110, 85, 65, 95, 90, 180]
         for i, w in enumerate(widths):
             self.table.setColumnWidth(i, w)
 
@@ -841,11 +841,11 @@ def set_equal_button_widths(*buttons, width_multiplier=1):
 
 
 def stock_column_widths():
-    return [42, 108, 108, 176, 104, 76, 54, 96, 92, 164]
+    return [42, 140, 140, 229, 104, 76, 54, 96, 92, 164]
 
 
 def history_column_widths():
-    return [172, 66, 104, 104, 138, 98, 76, 92, 102, 96, 164]
+    return [172, 66, 135, 135, 179, 98, 76, 92, 102, 96, 164]
 
 
 def now_text(now_str=None):
