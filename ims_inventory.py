@@ -1125,6 +1125,101 @@ class InOutDialog(QDialog):
         }
 
 
+class HistoryEditDialog(QDialog):
+    def __init__(self, parent=None, history_row=None):
+        super().__init__(parent)
+        self.setWindowTitle("입출고 기록 수정")
+        self.setModal(True)
+        self.resize(440, 440)
+        self.history_row = history_row or {}
+
+        layout = QVBoxLayout(self)
+
+        info_wrap = QFrame()
+        info_wrap.setObjectName("Card")
+        info_layout = QVBoxLayout(info_wrap)
+        info_layout.setContentsMargins(12, 12, 12, 12)
+        info_layout.setSpacing(4)
+
+        info_lines = [
+            f"구분: {self.history_row.get('구분', '')}",
+            f"브랜드: {self.history_row.get('브랜드', '')}",
+            f"품명: {self.history_row.get('자재명', '')} ({self.history_row.get('규격', '')})",
+            f"일시: {self.history_row.get('일시', '')}",
+        ]
+        info_label = QLabel("\n".join(info_lines))
+        info_label.setStyleSheet("font-size: 13px; line-height: 1.6; color: #374151;")
+        info_layout.addWidget(info_label)
+        layout.addWidget(info_wrap)
+
+        form = QFormLayout()
+        self.qty = QSpinBox()
+        self.qty.setRange(0, 999999999)
+        self.qty.setGroupSeparatorShown(True)
+        self.qty.setValue(to_int(self.history_row.get("수량", 0)))
+
+        self.price = QSpinBox()
+        self.price.setRange(0, 999999999)
+        self.price.setGroupSeparatorShown(True)
+        self.price.setValue(to_int(self.history_row.get("단가", 0)))
+
+        self.staff = QLineEdit()
+        self.staff.setText(self.history_row.get("담당자", ""))
+
+        self.note = QLineEdit()
+        self.note.setText(self.history_row.get("비고", ""))
+
+        self.amount_label = QLabel()
+        self._update_amount()
+        self.qty.valueChanged.connect(self._update_amount)
+        self.price.valueChanged.connect(self._update_amount)
+
+        form.addRow("수량", self.qty)
+        form.addRow("단가", self.price)
+        form.addRow("금액 (계산)", self.amount_label)
+        form.addRow("담당자", self.staff)
+        form.addRow("비고", self.note)
+
+        layout.addLayout(form)
+
+        btns = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        btns.accepted.connect(self.accept)
+        btns.rejected.connect(self.reject)
+        layout.addWidget(btns)
+
+        input_style = """
+            QSpinBox, QLineEdit {
+                border: 1px solid #cbd5e1;
+                border-radius: 8px;
+                padding: 8px 10px;
+                background: #ffffff;
+                color: #111827;
+                font-size: 13px;
+            }
+        """
+        self.qty.setStyleSheet(input_style)
+        self.price.setStyleSheet(input_style)
+        self.staff.setStyleSheet(input_style)
+        self.note.setStyleSheet(input_style)
+        self.amount_label.setStyleSheet(
+            "font-size: 14px; font-weight: 700; color: #2563eb; "
+            "padding: 8px; background: #eff6ff; border-radius: 8px;"
+        )
+
+    def _update_amount(self):
+        qty = self.qty.value()
+        price = self.price.value()
+        self.amount_label.setText(f"{qty * price:,}원")
+
+    def get_data(self):
+        return {
+            "수량": self.qty.value(),
+            "단가": self.price.value(),
+            "담당자": self.staff.text().strip(),
+            "비고": self.note.text().strip(),
+        }
+
+
 class ValuePickerDialog(QDialog):
     def __init__(self, title, values, selected_value="전체", parent=None):
         super().__init__(parent)
@@ -1667,6 +1762,11 @@ class IMSInventoryApp(QMainWindow):
         bottom.addWidget(history_prev_btn)
         bottom.addWidget(history_next_btn)
         bottom.addStretch()
+        history_edit_btn = QPushButton("변경")
+        history_edit_btn.setProperty("role", "primary-strong")
+        history_edit_btn.clicked.connect(self.edit_selected_history)
+        set_equal_button_widths(history_edit_btn)
+        bottom.addWidget(history_edit_btn)
         layout.addWidget(bottom_row)
         return tab
 
@@ -1847,6 +1947,8 @@ class IMSInventoryApp(QMainWindow):
             ]
             for j, val in enumerate(vals):
                 item = QTableWidgetItem(val)
+                if j == 0:
+                    item.setData(Qt.UserRole, row)
                 if j == 1:
                     item.setTextAlignment(Qt.AlignCenter)
                     item.setData(Qt.UserRole, row.get("구분", ""))
@@ -2005,6 +2107,108 @@ class IMSInventoryApp(QMainWindow):
         self.current_page = 1
         self.refresh_all()
         QMessageBox.information(self, "완료", "선택한 품목이 삭제되었습니다.")
+
+    def get_selected_history_index(self):
+        row = self.history_table.currentRow()
+        if row < 0:
+            return None
+        item = self.history_table.item(row, 0)
+        if not item:
+            return None
+        return item.data(Qt.UserRole)
+
+    def get_selected_history_row(self):
+        item = self.history_table.item(self.history_table.currentRow(), 0)
+        if not item:
+            return None
+        return item.data(Qt.UserRole)
+
+    def edit_selected_history(self):
+        history_row = self.get_selected_history_row()
+        if history_row is None:
+            QMessageBox.information(self, "안내", "수정할 기록을 먼저 선택하세요.")
+            return
+        dlg = HistoryEditDialog(self, history_row)
+        if dlg.exec():
+            data = dlg.get_data()
+            if data.get("수량", 0) <= 0:
+                QMessageBox.warning(self, "확인", "수량을 1개 이상 입력해주세요.")
+                return
+            old_qty = to_int(history_row.get("수량", 0))
+            old_price = to_int(history_row.get("단가", 0))
+            new_qty = data["수량"]
+            new_price = data["단가"]
+
+            history_row["수량"] = str(new_qty)
+            history_row["단가"] = str(new_price)
+            history_row["금액"] = str(new_qty * new_price)
+            history_row["담당자"] = data["담당자"]
+            history_row["비고"] = data["비고"]
+
+            kind = str(history_row.get("구분", "")).strip()
+            item_name = history_row.get("자재명", "")
+            brand = history_row.get("브랜드", "")
+
+            if kind == "입고":
+                diff = new_qty - old_qty
+                if diff != 0:
+                    found = False
+                    for srow in self.stock_rows:
+                        if (srow.get("자재명", "") == item_name and
+                            srow.get("브랜드", "") == brand and
+                            srow.get("종류", "") == history_row.get("종류", "") and
+                            srow.get("규격", "") == history_row.get("규격", "")):
+                            old_stock = to_int(srow.get("재고", 0))
+                            old_avg = to_int(srow.get("평균단가", 0))
+                            total_qty = old_stock + diff
+                            if total_qty > 0:
+                                srow["평균단가"] = str(
+                                    round_half_up(((old_stock * old_avg) + (diff * new_price)) / total_qty)
+                                )
+                            srow["재고"] = str(max(0, total_qty))
+                            found = True
+                            break
+                    if not found:
+                        QMessageBox.warning(
+                            self, "경고",
+                            f"해당 품목({item_name})이 재고 목록에 없습니다.\n재고 목록에 추가해주세요."
+                        )
+
+            elif kind == "출고":
+                diff = new_qty - old_qty
+                if diff != 0:
+                    found = False
+                    for srow in self.stock_rows:
+                        if (srow.get("자재명", "") == item_name and
+                            srow.get("브랜드", "") == brand and
+                            srow.get("종류", "") == history_row.get("종류", "") and
+                            srow.get("규격", "") == history_row.get("규격", "")):
+                            new_stock = to_int(srow.get("재고", 0)) - diff
+                            if new_stock < 0:
+                                QMessageBox.warning(
+                                    self, "재고 부족",
+                                    f"출고량을 수정하면 재고가 부족해집니다.\n\n"
+                                    f"현재 재고: {to_int(srow.get('재고', 0))}\n"
+                                    f"수정 후 재고: {new_stock}"
+                                )
+                                return
+                            srow["재고"] = str(new_stock)
+                            found = True
+                            break
+                    if not found:
+                        QMessageBox.warning(
+                            self, "경고",
+                            f"해당 품목({item_name})이 재고 목록에 없습니다.\n재고 목록에 추가해주세요."
+                        )
+
+            try:
+                write_csv(STOCK_CSV, STOCK_FIELDS, self.stock_rows)
+                write_csv(HISTORY_CSV, HISTORY_FIELDS, self.history_rows)
+            except Exception as e:
+                QMessageBox.critical(self, "저장 오류", f"기록 저장 중 오류가 발생했습니다:\n{str(e)}")
+                return
+            self.refresh_all()
+            QMessageBox.information(self, "완료", "입출고 기록이 수정되었습니다.")
 
     def open_email_config(self):
         cfg = load_email_config()
