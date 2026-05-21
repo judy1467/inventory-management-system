@@ -340,7 +340,6 @@ def app_stylesheet():
         QTableWidget {
             background: #ffffff;
             color: #111827;
-            alternate-background-color: #f8fafc;
             gridline-color: #cbd5e1;
             border: 1px solid #cbd5e1;
             border-radius: 8px;
@@ -352,6 +351,7 @@ def app_stylesheet():
         QTableWidget::item {
             padding: 2px;
             border: none;
+            background: transparent;
         }
         QTableWidget::item:selected {
             background: #93c5fd;
@@ -1962,6 +1962,13 @@ class IMSInventoryApp(QMainWindow):
 
         location_lookup = build_stock_location_lookup(self.stock_rows)
         for i, row in enumerate(page_rows):
+            kind = row.get("구분", "")
+            if kind == "입고":
+                row_bg = QColor("#dcfce7")
+            elif kind == "출고":
+                row_bg = QColor("#fee2e2")
+            else:
+                row_bg = QColor("#f8fafc") if i % 2 == 1 else QColor("#ffffff")
             vals = [
                 row.get("일시", ""), row.get("구분", ""), row.get("브랜드", ""), row.get("종류", ""),
                 row.get("자재명", ""), row.get("규격", ""), row.get("수량", ""),
@@ -1970,6 +1977,7 @@ class IMSInventoryApp(QMainWindow):
             ]
             for j, val in enumerate(vals):
                 item = QTableWidgetItem(val)
+                item.setBackground(row_bg)
                 if j == 0:
                     item.setData(Qt.UserRole, row)
                 if j == 1:
