@@ -970,9 +970,9 @@ def create_new_item_inbound(stock_rows, history_rows, item_data, inbound_data, n
 
 
 class ItemDialog(QDialog):
-    def __init__(self, parent=None, data=None):
+    def __init__(self, parent=None, data=None, new_item=False):
         super().__init__(parent)
-        self.setWindowTitle("자재 등록 / 수정")
+        self.setWindowTitle("신규 품목 등록" if new_item else "자재 등록 / 수정")
         self.setModal(True)
         self.resize(460, 430)
 
@@ -1006,6 +1006,9 @@ class ItemDialog(QDialog):
                 widget.setGroupSeparatorShown(True)
             if isinstance(widget, QTextEdit):
                 widget.setFixedHeight(80)
+            if new_item and label in ("재고", "평균단가"):
+                widget.setEnabled(False)
+                widget.setStyleSheet("background: #e5e7eb; color: #9ca3af;")
             self.inputs[label] = widget
             if label in self.selectable_fields:
                 row_wrap = QWidget()
@@ -2045,7 +2048,7 @@ class IMSInventoryApp(QMainWindow):
         self.go_to_history_page(self.current_history_page + 1)
 
     def add_new_item_with_inbound(self):
-        item_dlg = ItemDialog(self)
+        item_dlg = ItemDialog(self, new_item=True)
         if not item_dlg.exec():
             return
         item_data = item_dlg.get_data()
