@@ -1127,55 +1127,85 @@ class HistoryEditDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("입출고 기록 수정")
         self.setModal(True)
-        self.resize(440, 440)
+        self.resize(460, 560)
         self.history_row = history_row or {}
 
         layout = QVBoxLayout(self)
-
-        info_wrap = QFrame()
-        info_wrap.setObjectName("Card")
-        info_layout = QVBoxLayout(info_wrap)
-        info_layout.setContentsMargins(12, 12, 12, 12)
-        info_layout.setSpacing(4)
-
-        info_lines = [
-            f"구분: {self.history_row.get('구분', '')}",
-            f"브랜드: {self.history_row.get('브랜드', '')}",
-            f"품명: {self.history_row.get('자재명', '')} ({self.history_row.get('규격', '')})",
-            f"일시: {self.history_row.get('일시', '')}",
-        ]
-        info_label = QLabel("\n".join(info_lines))
-        info_label.setStyleSheet("font-size: 13px; line-height: 1.6; color: #374151;")
-        info_layout.addWidget(info_label)
-        layout.addWidget(info_wrap)
-
         form = QFormLayout()
+        form.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        form.setRowWrapPolicy(QFormLayout.DontWrapRows)
+
+        # 일시
+        self.datetime_edit = QLineEdit()
+        self.datetime_edit.setText(self.history_row.get("일시", ""))
+        form.addRow("일시", self.datetime_edit)
+
+        # 구분 (콤보)
+        self.kind_combo = QComboBox()
+        self.kind_combo.addItems(["입고", "출고"])
+        current_kind = self.history_row.get("구분", "입고")
+        self.kind_combo.setCurrentText(current_kind)
+        form.addRow("구분", self.kind_combo)
+
+        # 브랜드
+        self.brand_edit = QLineEdit()
+        self.brand_edit.setText(self.history_row.get("브랜드", ""))
+        form.addRow("브랜드", self.brand_edit)
+
+        # 종류
+        self.kind_type_edit = QLineEdit()
+        self.kind_type_edit.setText(self.history_row.get("종류", ""))
+        form.addRow("종류", self.kind_type_edit)
+
+        # 자재명
+        self.name_edit = QLineEdit()
+        self.name_edit.setText(self.history_row.get("자재명", ""))
+        form.addRow("품명", self.name_edit)
+
+        # 규격
+        self.spec_edit = QLineEdit()
+        self.spec_edit.setText(self.history_row.get("규격", ""))
+        form.addRow("규격", self.spec_edit)
+
+        # 수량
         self.qty = QSpinBox()
         self.qty.setRange(0, 999999999)
         self.qty.setGroupSeparatorShown(True)
         self.qty.setValue(to_int(self.history_row.get("수량", 0)))
+        form.addRow("수량", self.qty)
 
+        # 단가
         self.price = QSpinBox()
         self.price.setRange(0, 999999999)
         self.price.setGroupSeparatorShown(True)
         self.price.setValue(to_int(self.history_row.get("단가", 0)))
+        form.addRow("단가", self.price)
 
-        self.staff = QLineEdit()
-        self.staff.setText(self.history_row.get("담당자", ""))
-
-        self.note = QLineEdit()
-        self.note.setText(self.history_row.get("비고", ""))
-
+        # 금액 (자동계산)
         self.amount_label = QLabel()
+        self.amount_label.setStyleSheet(
+            "font-size: 14px; font-weight: 700; color: #2563eb; "
+            "padding: 8px; background: #eff6ff; border-radius: 8px;"
+        )
         self._update_amount()
         self.qty.valueChanged.connect(self._update_amount)
         self.price.valueChanged.connect(self._update_amount)
+        form.addRow("금액 (자동)", self.amount_label)
 
-        form.addRow("수량", self.qty)
-        form.addRow("단가", self.price)
-        form.addRow("금액 (계산)", self.amount_label)
+        # 담당자
+        self.staff = QLineEdit()
+        self.staff.setText(self.history_row.get("담당자", ""))
         form.addRow("담당자", self.staff)
+
+        # 비고
+        self.note = QLineEdit()
+        self.note.setText(self.history_row.get("비고", ""))
         form.addRow("비고", self.note)
+
+        # 위치
+        self.location_edit = QLineEdit()
+        self.location_edit.setText(self.history_row.get("위치", ""))
+        form.addRow("위치", self.location_edit)
 
         layout.addLayout(form)
 
@@ -1184,36 +1214,25 @@ class HistoryEditDialog(QDialog):
         btns.rejected.connect(self.reject)
         layout.addWidget(btns)
 
-        input_style = """
-            QSpinBox, QLineEdit {
-                border: 1px solid #cbd5e1;
-                border-radius: 8px;
-                padding: 8px 10px;
-                background: #ffffff;
-                color: #111827;
-                font-size: 13px;
-            }
-        """
-        self.qty.setStyleSheet(input_style)
-        self.price.setStyleSheet(input_style)
-        self.staff.setStyleSheet(input_style)
-        self.note.setStyleSheet(input_style)
-        self.amount_label.setStyleSheet(
-            "font-size: 14px; font-weight: 700; color: #2563eb; "
-            "padding: 8px; background: #eff6ff; border-radius: 8px;"
-        )
-
     def _update_amount(self):
-        qty = self.qty.value()
-        price = self.price.value()
-        self.amount_label.setText(f"{qty * price:,}원")
+        self.amount_label.setText(f"{self.qty.value() * self.price.value():,}원")
 
     def get_data(self):
+        new_qty = self.qty.value()
+        new_price = self.price.value()
         return {
-            "수량": self.qty.value(),
-            "단가": self.price.value(),
+            "일시": self.datetime_edit.text().strip(),
+            "구분": self.kind_combo.currentText(),
+            "브랜드": self.brand_edit.text().strip(),
+            "종류": self.kind_type_edit.text().strip(),
+            "자재명": self.name_edit.text().strip(),
+            "규격": self.spec_edit.text().strip(),
+            "수량": new_qty,
+            "단가": new_price,
+            "금액": new_qty * new_price,
             "담당자": self.staff.text().strip(),
             "비고": self.note.text().strip(),
+            "위치": self.location_edit.text().strip(),
         }
 
 
@@ -2133,13 +2152,13 @@ class IMSInventoryApp(QMainWindow):
         if not dlg.exec():
             return
         data = dlg.get_data()
+        if not data.get("자재명", "").strip():
+            QMessageBox.warning(self, "확인", "품명은 필수입니다.")
+            return
         if data.get("수량", 0) <= 0:
             QMessageBox.warning(self, "확인", "수량을 1개 이상 입력해주세요.")
             return
-        new_qty = data["수량"]
-        new_price = data["단가"]
-        # UserRole에서 꺼낸 dict가 원본과 동일 객체인지 보장하기 위해
-        # 일시+자재명+구분을 key로 원본 self.history_rows에서 찾아 수정
+        # 원본 self.history_rows에서 해당 row를 찾아 수정
         target = None
         for hrow in self.history_rows:
             if (hrow.get("일시") == history_row.get("일시") and
@@ -2152,11 +2171,9 @@ class IMSInventoryApp(QMainWindow):
         if target is None:
             QMessageBox.warning(self, "오류", "수정할 기록을 찾을 수 없습니다.")
             return
-        target["수량"] = str(new_qty)
-        target["단가"] = str(new_price)
-        target["금액"] = str(new_qty * new_price)
-        target["담당자"] = data["담당자"]
-        target["비고"] = data["비고"]
+        for field in HISTORY_FIELDS:
+            if field in data:
+                target[field] = str(data[field])
         try:
             write_csv(HISTORY_CSV, HISTORY_FIELDS, self.history_rows)
         except Exception as e:
