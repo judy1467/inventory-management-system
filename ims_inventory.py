@@ -182,6 +182,10 @@ class ItemPickerDialog(QDialog):
             for col, val in enumerate(values):
                 item = QTableWidgetItem(val)
                 item.setData(Qt.UserRole, source_index)
+                if col in (5, 6, 7):
+                    item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                elif col in (0, 1, 2, 4, 8):
+                    item.setTextAlignment(Qt.AlignCenter)
                 self.table.setItem(row_no, col, item)
 
         self.table.horizontalHeader().setStretchLastSection(True)
@@ -1931,9 +1935,9 @@ class IMSInventoryApp(QMainWindow):
                 item.setBackground(row_bg)
                 if col in (1, 3):
                     item.setForeground(QColor("#2563eb"))
-                if col in (5, 7):
+                if col in (5, 6, 7):
                     item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-                elif col in (0, 1, 2, 4, 6, 8):
+                elif col in (0, 1, 2, 4, 8):
                     item.setTextAlignment(Qt.AlignCenter)
                 self.stock_table.setItem(i, col, item)
 
