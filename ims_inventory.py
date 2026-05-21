@@ -1922,9 +1922,12 @@ class IMSInventoryApp(QMainWindow):
                 row.get("규격", ""), row.get("재고", "0"), row.get("단위", ""),
                 f"{to_int(row.get('평균단가', 0)):,}", row.get("위치", ""), row.get("비고", "")
             ]
+            low_stock = to_int(row.get("재고", 0)) <= 5
             for col, val in enumerate(values):
                 item = QTableWidgetItem(val)
                 item.setData(Qt.UserRole, source_index)
+                if low_stock:
+                    item.setBackground(QColor("#fee2e2"))
                 if col in (1, 3):
                     item.setForeground(QColor("#2563eb"))
                 if col in (5, 7):
