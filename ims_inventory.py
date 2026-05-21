@@ -2129,86 +2129,40 @@ class IMSInventoryApp(QMainWindow):
             QMessageBox.information(self, "안내", "수정할 기록을 먼저 선택하세요.")
             return
         dlg = HistoryEditDialog(self, history_row)
-        if dlg.exec():
-            data = dlg.get_data()
-            if data.get("수량", 0) <= 0:
-                QMessageBox.warning(self, "확인", "수량을 1개 이상 입력해주세요.")
-                return
-            old_qty = to_int(history_row.get("수량", 0))
-            old_price = to_int(history_row.get("단가", 0))
-            new_qty = data["수량"]
-            new_price = data["단가"]
-
-            history_row["수량"] = str(new_qty)
-            history_row["단가"] = str(new_price)
-            history_row["금액"] = str(new_qty * new_price)
-            history_row["담당자"] = data["담당자"]
-            history_row["비고"] = data["비고"]
-
-            kind = str(history_row.get("구분", "")).strip()
-            item_name = history_row.get("자재명", "")
-            brand = history_row.get("브랜드", "")
-
-            if kind == "입고":
-                diff = new_qty - old_qty
-                if diff != 0:
-                    found = False
-                    for srow in self.stock_rows:
-                        if (srow.get("자재명", "") == item_name and
-                            srow.get("브랜드", "") == brand and
-                            srow.get("종류", "") == history_row.get("종류", "") and
-                            srow.get("규격", "") == history_row.get("규격", "")):
-                            old_stock = to_int(srow.get("재고", 0))
-                            old_avg = to_int(srow.get("평균단가", 0))
-                            total_qty = old_stock + diff
-                            if total_qty > 0:
-                                srow["평균단가"] = str(
-                                    round_half_up(((old_stock * old_avg) + (diff * new_price)) / total_qty)
-                                )
-                            srow["재고"] = str(max(0, total_qty))
-                            found = True
-                            break
-                    if not found:
-                        QMessageBox.warning(
-                            self, "경고",
-                            f"해당 품목({item_name})이 재고 목록에 없습니다.\n재고 목록에 추가해주세요."
-                        )
-
-            elif kind == "출고":
-                diff = new_qty - old_qty
-                if diff != 0:
-                    found = False
-                    for srow in self.stock_rows:
-                        if (srow.get("자재명", "") == item_name and
-                            srow.get("브랜드", "") == brand and
-                            srow.get("종류", "") == history_row.get("종류", "") and
-                            srow.get("규격", "") == history_row.get("규격", "")):
-                            new_stock = to_int(srow.get("재고", 0)) - diff
-                            if new_stock < 0:
-                                QMessageBox.warning(
-                                    self, "재고 부족",
-                                    f"출고량을 수정하면 재고가 부족해집니다.\n\n"
-                                    f"현재 재고: {to_int(srow.get('재고', 0))}\n"
-                                    f"수정 후 재고: {new_stock}"
-                                )
-                                return
-                            srow["재고"] = str(new_stock)
-                            found = True
-                            break
-                    if not found:
-                        QMessageBox.warning(
-                            self, "경고",
-                            f"해당 품목({item_name})이 재고 목록에 없습니다.\n재고 목록에 추가해주세요."
-                        )
-
-            try:
-                write_csv(STOCK_CSV, STOCK_FIELDS, self.stock_rows)
-                write_csv(HISTORY_CSV, HISTORY_FIELDS, self.history_rows)
-            except Exception as e:
-                QMessageBox.critical(self, "저장 오류", f"기록 저장 중 오류가 발생했습니다:\n{str(e)}")
-                return
-            self.refresh_all()
-            QMessageBox.information(self, "완료", "입출고 기록이 수정되었습니다.")
+        if not dlg.exec():
+            return
+        data = dlg.get_data()
+        if data.get("수량", 0) <= 0:
+            QMessageBox.warning(self, "확인", "수량을 1개 이상 입력해주세요.")
+            return
+        new_qty = data["수량"]
+        new_price = data["단가"]
+        # UserRole에서 꺼낸 dict가 원본과 동일 객체인지 보장하기 위해
+        # 일시+자재명+구분을 key로 원본 self.history_rows에서 찾아 수정
+        target = None
+        for hrow in self.history_rows:
+            if (hrow.get("일시") == history_row.get("일시") and
+                    hrow.get("자재명") == history_row.get("자재명") and
+                    hrow.get("구분") == history_row.get("구분") and
+                    hrow.get("수량") == history_row.get("수량") and
+                    hrow.get("단가") == history_row.get("단가")):
+                target = hrow
+                break
+        if target is None:
+            QMessageBox.warning(self, "오류", "수정할 기록을 찾을 수 없습니다.")
+            return
+        target["수량"] = str(new_qty)
+        target["단가"] = str(new_price)
+        target["금액"] = str(new_qty * new_price)
+        target["담당자"] = data["담당자"]
+        target["비고"] = data["비고"]
+        try:
+            write_csv(HISTORY_CSV, HISTORY_FIELDS, self.history_rows)
+        except Exception as e:
+            QMessageBox.critical(self, "저장 오류", f"기록 저장 중 오류가 발생했습니다:\n{str(e)}")
+            return
+        self.refresh_history_table()
+        QMessageBox.information(self, "완료", "입출고 기록이 수정되었습니다.")
 
     def open_email_config(self):
         cfg = load_email_config()
