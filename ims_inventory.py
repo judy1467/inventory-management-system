@@ -1008,9 +1008,6 @@ class ItemDialog(QDialog):
                 widget.setGroupSeparatorShown(True)
             if isinstance(widget, QTextEdit):
                 widget.setFixedHeight(80)
-            if label in ("재고", "평균단가"):
-                widget.setEnabled(False)
-                widget.setStyleSheet("background: #e5e7eb; color: #6b7280;")
             self.inputs[label] = widget
             if label in self.selectable_fields:
                 row_wrap = QWidget()
