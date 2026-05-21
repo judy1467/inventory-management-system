@@ -338,7 +338,6 @@ def app_stylesheet():
         QPushButton:hover { background: #2f6fa8; }
         QPushButton:pressed { background: #285f90; }
         QTableWidget {
-            background: #ffffff;
             color: #111827;
             gridline-color: #cbd5e1;
             border: 1px solid #cbd5e1;
@@ -351,7 +350,6 @@ def app_stylesheet():
         QTableWidget::item {
             padding: 2px;
             border: none;
-            background: transparent;
         }
         QTableWidget::item:selected {
             background: #93c5fd;
