@@ -168,8 +168,13 @@ def write_csv(path: str, fieldnames: List[str], rows: List[Dict[str, str]]):
 def round_half_up(value): return math.floor(value + 0.5)
 
 def to_int(value, default=0):
-    try: return int(str(value).replace(',', '').strip())
-    except Exception: return default
+    if value is None: return default
+    # 숫자와 마이너스(-) 기호만 남기고 모두 제거
+    clean_val = re.sub(r'[^0-9-]', '', str(value))
+    try:
+        return int(clean_val)
+    except ValueError:
+        return default
 
 def distinct_values(rows, field_name):
     return sorted({str(r.get(field_name, "")).strip() for r in rows if str(r.get(field_name, "")).strip()})

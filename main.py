@@ -693,6 +693,10 @@ class IMSInventoryApp(QMainWindow):
             new_qty, new_price = to_int(new_data.get("재고", 0)), to_int(new_data.get("평균단가", 0))
             if old_qty != new_qty or old_price != new_price:
                 apply_correction_to_history(self.history_rows, item, old_qty, new_qty, old_price, new_price)
+            # edit_selected_item 내부
+            if new_qty < 0:
+                QMessageBox.warning(self, "입력 오류", "재고는 음수가 될 수 없습니다.")
+                return
                 
             item.update(new_data)
             try:
