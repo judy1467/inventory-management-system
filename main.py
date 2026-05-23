@@ -696,20 +696,24 @@ class IMSInventoryApp(QMainWindow):
             QMessageBox.information(self, "안내", "수정할 자재를 먼저 선택하세요.")
             return
             
-        old_qty, old_price = to_int(item.get("재고", 0)), to_int(item.get("평균단가", 0))
+        old_data = item.copy()  # 변경 전 원본 데이터 전체 백업
+        
         dlg = ItemDialog(self, item)
         if dlg.exec():
             new_data = dlg.get_data()
             if not new_data.get("자재명", "").strip():
                 QMessageBox.warning(self, "확인", "품명은 필수입니다.")
                 return
-            new_qty, new_price = to_int(new_data.get("재고", 0)), to_int(new_data.get("평균단가", 0))
-            if old_qty != new_qty or old_price != new_price:
-                apply_correction_to_history(self.history_rows, item, old_qty, new_qty, old_price, new_price)
-            # edit_selected_item 내부
-            if new_qty < 0:
-                QMessageBox.warning(self, "입력 오류", "재고는 음수가 될 수 없습니다.")
-                return
+            
+            # 변경된 항목이 하나라도 있는지 확인
+            has_changes = False
+            for k in ["브랜드", "종류", "자재명", "규격", "단위", "재고", "평균단가", "위치", "비고"]:
+                if str(old_data.get(k, "")).strip() != str(new_data.get(k, "")).strip():
+                    has_changes = True
+                    break
+                    
+            if has_changes:
+                apply_correction_to_history(self.history_rows, old_data, new_data)
                 
             item.update(new_data)
             try:
@@ -834,7 +838,7 @@ class IMSInventoryApp(QMainWindow):
             
         kind, item_name = history_row.get("구분", ""), history_row.get("자재명", "")
         date_str, qty = history_row.get("일시", ""), history_row.get("수량", "")
-        reply = QMessageBox.question(self, "되돌리기 확인", f"구분: {kind}\n품명: {item_name}\n일시: {date_str}\n수량: {qty}\n\n이 기록을 취소하고 재고 수량을 원상 복구하시겠습니까?\n이 작업은 되돌릴 수 없습니다.", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        reply = QMessageBox.question(self, "되돌리기 확인", f"구분: {kind}\n품명: {item_name}\n일시: {date_str}\n수량: {qty}\n\n이 기록을 취소하고 원상 복구하시겠습니까?\n이 작업은 되돌릴 수 없습니다.", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if reply != QMessageBox.Yes: return
             
         target_index = None
@@ -857,14 +861,27 @@ class IMSInventoryApp(QMainWindow):
                 elif hist_kind == "출고": item["재고"] = str(current_qty + hist_qty)
                 elif hist_kind == "정정":
                     note = target_record.get("비고", "")
-                    qty_match = re.search(r"재고 정정 \(([\d,]+)개 -> ([\d,]+)개\)", note)
-                    if qty_match:
-                        old_q, new_q = to_int(qty_match.group(1)), to_int(qty_match.group(2))
-                        item["재고"] = str(current_qty + (old_q - new_q))
-                    price_match = re.search(r"단가 정정 \(([\d,]+)원 -> ([\d,]+)원\)", note)
-                    if price_match:
-                        old_p, new_p = to_int(price_match.group(1)), to_int(price_match.group(2))
-                        item["평균단가"] = str(to_int(item.get("평균단가", 0)) + (old_p - new_p))
+                    
+                    # 1. 예전 소괄호() 기록 호환성
+                    qty_match_old = re.search(r"재고 정정 \(([\d,]+)개 -> ([\d,]+)개\)", note)
+                    if qty_match_old: item["재고"] = str(current_qty + (to_int(qty_match_old.group(1)) - to_int(qty_match_old.group(2))))
+                    price_match_old = re.search(r"단가 정정 \(([\d,]+)원 -> ([\d,]+)원\)", note)
+                    if price_match_old: item["평균단가"] = str(to_int(item.get("평균단가", 0)) + (to_int(price_match_old.group(1)) - to_int(price_match_old.group(2))))
+                        
+                    # 2. 신규 대괄호[] 방식 적용 및 복구
+                    qty_match = re.search(r"재고 정정 \[([\d,]+)개 -> ([\d,]+)개\]", note)
+                    if qty_match: item["재고"] = str(current_qty + (to_int(qty_match.group(1)) - to_int(qty_match.group(2))))
+                    price_match = re.search(r"단가 정정 \[([\d,]+)원 -> ([\d,]+)원\]", note)
+                    if price_match: item["평균단가"] = str(to_int(item.get("평균단가", 0)) + (to_int(price_match.group(1)) - to_int(price_match.group(2))))
+                        
+                    # 3. 텍스트 변경사항 역산 (예전 글자로 되돌림)
+                    text_fields = {
+                        "품명": "자재명", "브랜드": "브랜드", "종류": "종류", 
+                        "규격": "규격", "단위": "단위", "위치": "위치", "비고": "비고"
+                    }
+                    for label, key in text_fields.items():
+                        match = re.search(rf"{label} 정정 \[(.*?) -> (.*?)\]", note)
+                        if match: item[key] = match.group(1)
                 break
 
         del self.history_rows[target_index]
@@ -875,7 +892,7 @@ class IMSInventoryApp(QMainWindow):
             QMessageBox.critical(self, "데이터 저장 오류", f"데이터 저장 중 오류가 발생했습니다:\n{str(e)}")
             return
         self.refresh_all()
-        QMessageBox.information(self, "완료", "해당 기록이 취소되고 재고 수량 및 단가가 정상 복구되었습니다.")
+        QMessageBox.information(self, "완료", "해당 기록이 취소되고 정보가 정상 복구되었습니다.")
 
     def open_email_config(self):
         cfg = load_email_config()

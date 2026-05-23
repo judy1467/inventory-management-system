@@ -335,17 +335,48 @@ def apply_outbound_to_stock(stock_rows, history_rows, item_index, outbound_data,
     history_rows.append(make_history_row("출고", item, qty_out, out_price, outbound_data.get("담당자", ""), outbound_data.get("비고", ""), now_str))
     return item
 
-def apply_correction_to_history(history_rows, item, old_qty, new_qty, old_price, new_price, now_str=None):
+def apply_correction_to_history(history_rows, old_data, new_data, now_str=None):
+    old_qty, new_qty = to_int(old_data.get("재고", 0)), to_int(new_data.get("재고", 0))
+    old_price, new_price = to_int(old_data.get("평균단가", 0)), to_int(new_data.get("평균단가", 0))
+    
     qty_diff = new_qty - old_qty
     notes = []
-    if qty_diff != 0: notes.append(f"재고 정정 ({old_qty}개 -> {new_qty}개)")
-    if old_price != new_price: notes.append(f"단가 정정 ({old_price:,}원 -> {new_price:,}원)")
-    note_text = " / ".join(notes) if notes else "단순 정보 수정"
+    
+    if qty_diff != 0: 
+        notes.append(f"재고 정정 [{old_qty}개 -> {new_qty}개]")
+    if old_price != new_price: 
+        notes.append(f"단가 정정 [{old_price:,}원 -> {new_price:,}원]")
+        
+    # 텍스트 항목 변경 감지
+    text_fields = {
+        "자재명": "품명", "브랜드": "브랜드", "종류": "종류", 
+        "규격": "규격", "단위": "단위", "위치": "위치", "비고": "비고"
+    }
+    
+    for key, label in text_fields.items():
+        o_val = str(old_data.get(key, "")).strip()
+        n_val = str(new_data.get(key, "")).strip()
+        if o_val != n_val:
+            notes.append(f"{label} 정정 [{o_val} -> {n_val}]")
+            
+    if not notes:
+        return  # 변경된 내용이 없으면 기록하지 않음
+        
+    note_text = " | ".join(notes)
+    
     history_rows.append({
-        "일시": now_text(now_str), "구분": "정정", "자재명": item.get("자재명", ""), "브랜드": item.get("브랜드", ""),
-        "종류": item.get("종류", ""), "규격": item.get("규격", ""), "수량": str(abs(qty_diff)) if qty_diff != 0 else "0",
-        "단가": str(new_price), "금액": f"{abs(qty_diff) * new_price:,}" if qty_diff != 0 else "0",
-        "담당자": "시스템관리자", "비고": note_text, "위치": item.get("위치", "")
+        "일시": now_text(now_str), 
+        "구분": "정정", 
+        "자재명": new_data.get("자재명", ""), 
+        "브랜드": new_data.get("브랜드", ""),
+        "종류": new_data.get("종류", ""), 
+        "규격": new_data.get("규격", ""), 
+        "수량": str(abs(qty_diff)) if qty_diff != 0 else "0",
+        "단가": str(new_price), 
+        "금액": f"{abs(qty_diff) * new_price:,}" if qty_diff != 0 else "0",
+        "담당자": "시스템관리자", 
+        "비고": note_text, 
+        "위치": new_data.get("위치", "")
     })
 
 def create_new_item_inbound(stock_rows, history_rows, item_data, inbound_data, now_str=None):
