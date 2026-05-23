@@ -20,7 +20,7 @@ from ui_components import *
 class IMSInventoryApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("IMS 재고관리 시스템")
+        self.setWindowTitle("다모다웰딩 재고관리 시스템")
         self.resize(1480, 900)
         self.setMinimumSize(1180, 680)
         self.stock_rows, self.history_rows = [], []
@@ -655,6 +655,19 @@ class IMSInventoryApp(QMainWindow):
         if missing_fields:
             QMessageBox.warning(self, "필수 입력 확인", f"다음 항목을 입력해주세요:\n• {', '.join(missing_fields)}")
             return
+
+        # 🔥 추가된 방어 로직: 자재명, 브랜드, 종류, 규격이 모두 같은 품목이 있는지 검사
+        new_key = stock_identity_key(item_data)
+        for row in self.stock_rows:
+            if stock_identity_key(row) == new_key:
+                QMessageBox.warning(
+                    self, 
+                    "중복 등록 차단", 
+                    f"장부에 이미 동일한 품목이 존재합니다.\n\n"
+                    f"품명: {new_key[0]}\n브랜드: {new_key[1]}\n종류: {new_key[2]}\n규격: {new_key[3]}\n\n"
+                    f"새로 등록하지 마시고, 메인 화면의 [등록된 품목 선택 후 입고 등록] 버튼을 이용해 수량만 더해주세요."
+                )
+                return
 
         inout_dlg = InOutDialog(NEW_ITEM_INBOUND_DIALOG_TITLE, self, item_data)
         if not inout_dlg.exec(): return
