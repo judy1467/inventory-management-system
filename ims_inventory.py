@@ -951,6 +951,35 @@ def apply_outbound_to_stock(stock_rows, history_rows, item_index, outbound_data,
     return item
 
 
+def apply_correction_to_history(history_rows, item, old_qty, new_qty, old_price, new_price, now_str=None):
+    """재고현황에서 직접 수량이나 단가를 변경했을 때 '정정' 이력을 남기는 함수"""
+    qty_diff = new_qty - old_qty
+    
+    # 변경된 사항에 따라 비고란에 넣을 메시지 작성
+    notes = []
+    if qty_diff != 0:
+        notes.append(f"재고 정정 ({old_qty}개 -> {new_qty}개)")
+    if old_price != new_price:
+        notes.append(f"단가 정정 ({old_price:,}원 -> {new_price:,}원)")
+        
+    note_text = " / ".join(notes) if notes else "단순 정보 수정"
+
+    history_rows.append({
+        "일시": now_text(now_str),
+        "구분": "정정",
+        "자재명": item.get("자재명", ""),
+        "브랜드": item.get("브랜드", ""),
+        "종류": item.get("종류", ""),
+        "규격": item.get("규격", ""),
+        "수량": str(abs(qty_diff)) if qty_diff != 0 else "0",
+        "단가": str(new_price),
+        "금액": f"{qty_diff * new_price:,}" if qty_diff != 0 else "0",
+        "담당자": "시스템관리자",
+        "비고": note_text,
+        "위치": item.get("위치", ""),
+    })
+
+
 def create_new_item_inbound(stock_rows, history_rows, item_data, inbound_data, now_str=None):
     new_item = {key: item_data.get(key, "") for key in STOCK_FIELDS}
     new_item["재고"] = "0"
@@ -1997,19 +2026,42 @@ class IMSInventoryApp(QMainWindow):
         if not item:
             QMessageBox.information(self, "안내", "수정할 자재를 먼저 선택하세요.")
             return
+            
+        # 변경 전 원본 데이터 백업
+        old_qty = to_int(item.get("재고", 0))
+        old_price = to_int(item.get("평균단가", 0))
+        
         dlg = ItemDialog(self, item)
         if dlg.exec():
             new_data = dlg.get_data()
             if not new_data.get("자재명", "").strip():
                 QMessageBox.warning(self, "확인", "품명은 필수입니다.")
                 return
+                
+            # 변경 후 데이터 확인
+            new_qty = to_int(new_data.get("재고", 0))
+            new_price = to_int(new_data.get("평균단가", 0))
+            
+            # 수량이나 단가에 변동이 있다면 '정정' 이력 생성
+            if old_qty != new_qty or old_price != new_price:
+                apply_correction_to_history(
+                    self.history_rows, item, 
+                    old_qty, new_qty, 
+                    old_price, new_price
+                )
+                
+            # 데이터 업데이트 및 저장
             item.update(new_data)
             try:
                 write_csv(STOCK_CSV, STOCK_FIELDS, self.stock_rows)
+                # 정정 내역이 추가되었으므로 history 파일도 함께 저장
+                write_csv(HISTORY_CSV, HISTORY_FIELDS, self.history_rows)
             except Exception as e:
-                QMessageBox.critical(self, "저장 오류", f"재고 목록 저장 중 오류가 발생했습니다:\n{str(e)}")
+                QMessageBox.critical(self, "저장 오류", f"저장 중 오류가 발생했습니다:\n{str(e)}")
                 return
+                
             self.refresh_all()
+            QMessageBox.information(self, "완료", "자재 정보가 수정되었으며 변경 이력이 장부에 기록되었습니다.")
 
     def delete_selected_item(self):
         index = self.get_selected_index()
@@ -2090,6 +2142,8 @@ class IMSInventoryApp(QMainWindow):
         hist_qty = to_int(target_record.get("수량", 0))
         hist_kind = target_record.get("구분", "")
         
+        import re  # 비고란의 텍스트에서 숫자를 추출하기 위해 정규표현식 모듈 임포트
+        
         for item in self.stock_rows:
             if (item.get("자재명") == target_record.get("자재명") and 
                 item.get("브랜드") == target_record.get("브랜드") and 
@@ -2098,10 +2152,34 @@ class IMSInventoryApp(QMainWindow):
                 
                 current_qty = to_int(item.get("재고", 0))
                 
+                # 1. 입고 취소: 더해졌던 수량만큼 뺌
                 if hist_kind == "입고":
                     item["재고"] = str(current_qty - hist_qty)
+                    
+                # 2. 출고 취소: 빠져나갔던 수량만큼 다시 더함
                 elif hist_kind == "출고":
                     item["재고"] = str(current_qty + hist_qty)
+                    
+                # 3. 정정 취소 (🔥 새롭게 추가된 부분)
+                elif hist_kind == "정정":
+                    note = target_record.get("비고", "")
+                    
+                    # 재고 정정 내역 파싱 및 복구: "재고 정정 (예전값 -> 새값)"
+                    qty_match = re.search(r"재고 정정 \(([\d,]+)개 -> ([\d,]+)개\)", note)
+                    if qty_match:
+                        old_q = to_int(qty_match.group(1))
+                        new_q = to_int(qty_match.group(2))
+                        # 예전 값과 새 값의 차이만큼 현재 재고에 더하여 복구
+                        item["재고"] = str(current_qty + (old_q - new_q))
+                        
+                    # 단가 정정 내역 파싱 및 복구: "단가 정정 (예전값 -> 새값)"
+                    price_match = re.search(r"단가 정정 \(([\d,]+)원 -> ([\d,]+)원\)", note)
+                    if price_match:
+                        old_p = to_int(price_match.group(1))
+                        new_p = to_int(price_match.group(2))
+                        current_price = to_int(item.get("평균단가", 0))
+                        # 예전 값과 새 값의 차이만큼 현재 단가에 더하여 복구
+                        item["평균단가"] = str(current_price + (old_p - new_p))
                 break
 
         del self.history_rows[target_index]
@@ -2114,7 +2192,7 @@ class IMSInventoryApp(QMainWindow):
             return
             
         self.refresh_all()
-        QMessageBox.information(self, "완료", "해당 기록이 취소되고 재고 수량이 정상 복구되었습니다.")
+        QMessageBox.information(self, "완료", "해당 기록이 취소되고 재고 수량 및 단가가 정상 복구되었습니다.")
 
     def open_email_config(self):
         cfg = load_email_config()
