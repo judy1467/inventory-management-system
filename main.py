@@ -408,6 +408,15 @@ class IMSInventoryApp(QMainWindow):
     def build_menu(self):
         menu = self.menuBar()
         backup_menu = menu.addMenu("백업")
+        data_menu = menu.addMenu("검사")
+        
+        # 🔥 데이터 무결성 검사 메뉴 추가
+        audit_action = QAction("데이터 무결성 검사", self)
+        audit_action.triggered.connect(self.run_data_audit)
+        data_menu.addAction(audit_action)
+        
+        # 메뉴 가독성을 위한 구분선 추가
+        backup_menu.addSeparator()
         
         create_backup_action = QAction("백업 생성", self)
         create_backup_action.triggered.connect(self.open_create_backup_dialog)
@@ -416,6 +425,30 @@ class IMSInventoryApp(QMainWindow):
         email_cfg_action = QAction("이메일 백업 설정", self)
         email_cfg_action.triggered.connect(self.open_email_config)
         backup_menu.addAction(email_cfg_action)
+        
+    def run_data_audit(self):
+        """장부 데이터와 히스토리 데이터의 일치성을 진단하는 함수"""
+        # 검사 직전 최신 CSV 상태를 메모리에 동기화
+        self.stock_rows = read_csv(STOCK_CSV)
+        self.history_rows = read_csv(HISTORY_CSV)
+        
+        # 알고리즘 실행
+        is_safe, message = is_naturally_linked_inventory(self.stock_rows, self.history_rows)
+        
+        if is_safe:
+            QMessageBox.information(
+                self, 
+                "데이터 무결성 검사 완료", 
+                f"✅ 시스템 상태 정상\n\n{message}"
+            )
+        else:
+            QMessageBox.critical(
+                self, 
+                "⚠️ 데이터 불일치 위험 감지", 
+                f"❌ 장부 데이터 변형 감지!\n\n{message}\n\n"
+                f"누군가 프로그램을 통하지 않고 엑셀이나 텍스트 편집기로 "
+                f"CSV 파일을 임의 수정했을 가능성이 있습니다. 데이터를 점검하세요."
+            )
 
     def apply_styles(self):
         app = QApplication.instance()
