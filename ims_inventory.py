@@ -949,6 +949,9 @@ def history_kind_colors(kind):
         return "#dcfce7", "#111827"
     if str(kind or "").strip() == "출고":
         return "#fee2e2", "#111827"
+    # 🔥 '정정' 하늘색 뱃지 추가
+    if str(kind or "").strip() == "정정":
+        return "#e0f2fe", "#111827"
     return None
 
 
@@ -1794,13 +1797,13 @@ class IMSInventoryApp(QMainWindow):
         table.verticalHeader().setDefaultSectionSize(36)
         table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
         
-        # 커스텀 테이블(AutoExpandTableWidget)에서 너비를 조절하므로 기본 맞춤 옵션은 끕니다.
+        # 🔥 마지막 칸 자동 늘림 방지 및 가로 스크롤 활성화
         table.horizontalHeader().setStretchLastSection(False)
         table.setWordWrap(False)
+        table.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
         
         table.setSelectionMode(QAbstractItemView.SingleSelection)
         table.setShowGrid(True)
-        table.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
 
     def load_all_data(self):
         ensure_files()
@@ -1975,6 +1978,9 @@ class IMSInventoryApp(QMainWindow):
                 row_bg = QColor("#dcfce7")
             elif kind == "출고":
                 row_bg = QColor("#fee2e2")
+            # 🔥 '정정' 행 배경색 하늘색 추가
+            elif kind == "정정":
+                row_bg = QColor("#e0f2fe")
             else:
                 row_bg = QColor("#f8fafc") if i % 2 == 1 else QColor("#ffffff")
             vals = [
@@ -2403,6 +2409,24 @@ class IMSInventoryApp(QMainWindow):
             self.history_rows = []
         self.refresh_all()
         QMessageBox.information(self, "완료", "CSV를 불러왔습니다.")
+
+    def adjust_last_column_width(self, table: QTableWidget):
+        last_idx = table.columnCount() - 1
+        if last_idx < 0:
+            return
+            
+        # 1. 텍스트 길이에 맞춰 최소 너비 확보 (+16은 여백)
+        table.resizeColumnToContents(last_idx)
+        content_w = table.columnWidth(last_idx) + 16
+        
+        # 2. 화면의 남은 빈 공간 계산
+        viewport_w = table.viewport().width()
+        used_w = sum(table.columnWidth(i) for i in range(last_idx))
+        remaining_w = viewport_w - used_w
+        
+        # 3. 글자가 길면 가로 스크롤 생성(content_w), 짧으면 빈 공간 채우기(remaining_w)
+        final_w = max(content_w, remaining_w, 150)
+        table.setColumnWidth(last_idx, final_w)    
 
 
 def main():
