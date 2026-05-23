@@ -41,7 +41,6 @@ class ItemPickerDialog(QDialog):
         self.stock_filters = {field_name: "전체" for field_name in self.stock_filter_fields}
         self.stock_filter_buttons = {}
         self.stock_filter_clear_buttons = {}
-        self.stock_filter_clear_spacers = {}
 
         layout = QVBoxLayout(self)
 
@@ -69,23 +68,23 @@ class ItemPickerDialog(QDialog):
             button.setProperty("compact", True)
             button.setFixedWidth(filter_config["button_min_width"])
             button.clicked.connect(lambda _=False, fn=field_name: self.open_stock_filter_picker(fn))
+            
             clear_btn = QPushButton("X")
             clear_btn.setProperty("role", "filter-clear")
             clear_btn.setProperty("compact", True)
             clear_btn.setFixedWidth(filter_config["clear_width"])
+            sp = clear_btn.sizePolicy()
+            sp.setRetainSizeWhenHidden(True)
+            clear_btn.setSizePolicy(sp)
             clear_btn.setVisible(False)
             clear_btn.clicked.connect(lambda _=False, fn=field_name: self.clear_stock_filter_field(fn))
-            clear_spacer = QWidget()
-            clear_spacer.setFixedWidth(filter_config["clear_width"])
-            clear_spacer.setVisible(True)
+            
             self.stock_filter_buttons[field_name] = button
             self.stock_filter_clear_buttons[field_name] = clear_btn
-            self.stock_filter_clear_spacers[field_name] = clear_spacer
 
             field_row.addWidget(label)
             field_row.addWidget(button)
             field_row.addWidget(clear_btn)
-            field_row.addWidget(clear_spacer)
             filter_wrap.addWidget(field_wrap)
 
         if filter_config.get("add_trailing_stretch"):
@@ -140,7 +139,6 @@ class ItemPickerDialog(QDialog):
         for field_name, clear_btn in self.stock_filter_clear_buttons.items():
             is_active = self.stock_filters.get(field_name, "전체") != "전체"
             clear_btn.setVisible(is_active)
-            self.stock_filter_clear_spacers[field_name].setVisible(not is_active)
         self.filter_summary_label.setText(active_filter_summary(self.stock_filters))
 
     def open_stock_filter_picker(self, field_name):
@@ -200,17 +198,11 @@ class ItemPickerDialog(QDialog):
         self.selected_index = item.data(Qt.UserRole)
         self.accept()
 
+
 def get_base_dir():
-    """
-    실행 파일의 기준 디렉토리를 반환
-    - PyInstaller 빌드: .exe 파일이 있는 폴더 (사용자가 접근 가능한 위치)
-    - 개발 환경: 스크립트 파일이 있는 폴더
-    """
     if getattr(sys, 'frozen', False):
-        # PyInstaller로 빌드된 실행 파일
         return os.path.dirname(sys.executable)
     else:
-        # 개발 환경 (Python 스크립트)
         return os.path.dirname(os.path.abspath(__file__))
 
 
@@ -488,7 +480,7 @@ def save_email_config(cfg):
     try:
         with open(EMAIL_CONFIG_JSON, "w", encoding="utf-8") as f:
             json.dump(cfg, f, ensure_ascii=False, indent=2)
-    except Exception as e:
+    except Exception:
         traceback.print_exc()
 
 
@@ -597,7 +589,6 @@ def write_csv(path: str, fieldnames: List[str], rows: List[Dict[str, str]]):
 
 
 def round_half_up(value):
-    """함수_올림(타일2 반올림): 0.5 반디만 할 때 항상 올림기."""
     return math.floor(value + 0.5)
 
 
@@ -783,7 +774,6 @@ def outbound_shortage_message(item_name, current_qty, request_qty, unit):
 
 
 def truncate_filter_label(value, max_chars=7):
-    """필터 버튼에 표시할 텍스트를 최대 글자수로 잘라 말줄임 처리"""
     if not value or value == "전체":
         return "전체"
     return value if len(value) <= max_chars else value[:max_chars] + "…"
@@ -804,7 +794,6 @@ def stock_filter_layout_config():
 
 
 def _filter_field_wrap_width(cfg):
-    """필드 한 칸의 고정 너비: 라벨 + spacing + 버튼 + spacing + clear"""
     return cfg["label_width"] + cfg["row_spacing"] + cfg["button_min_width"] + cfg["row_spacing"] + cfg["clear_width"]
 
 
@@ -1126,120 +1115,6 @@ class InOutDialog(QDialog):
         }
 
 
-class HistoryEditDialog(QDialog):
-    def __init__(self, parent=None, history_row=None):
-        super().__init__(parent)
-        self.setWindowTitle("입출고 기록 수정")
-        self.setModal(True)
-        self.resize(460, 560)
-        self.history_row = history_row or {}
-
-        layout = QVBoxLayout(self)
-        form = QFormLayout()
-        form.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        form.setRowWrapPolicy(QFormLayout.DontWrapRows)
-
-        # 일시
-        self.datetime_edit = QLineEdit()
-        self.datetime_edit.setText(self.history_row.get("일시", ""))
-        form.addRow("일시", self.datetime_edit)
-
-        # 구분 (콤보)
-        self.kind_combo = QComboBox()
-        self.kind_combo.addItems(["입고", "출고"])
-        current_kind = self.history_row.get("구분", "입고")
-        self.kind_combo.setCurrentText(current_kind)
-        form.addRow("구분", self.kind_combo)
-
-        # 브랜드
-        self.brand_edit = QLineEdit()
-        self.brand_edit.setText(self.history_row.get("브랜드", ""))
-        form.addRow("브랜드", self.brand_edit)
-
-        # 종류
-        self.kind_type_edit = QLineEdit()
-        self.kind_type_edit.setText(self.history_row.get("종류", ""))
-        form.addRow("종류", self.kind_type_edit)
-
-        # 자재명
-        self.name_edit = QLineEdit()
-        self.name_edit.setText(self.history_row.get("자재명", ""))
-        form.addRow("품명", self.name_edit)
-
-        # 규격
-        self.spec_edit = QLineEdit()
-        self.spec_edit.setText(self.history_row.get("규격", ""))
-        form.addRow("규격", self.spec_edit)
-
-        # 수량
-        self.qty = QSpinBox()
-        self.qty.setRange(0, 999999999)
-        self.qty.setGroupSeparatorShown(True)
-        self.qty.setValue(to_int(self.history_row.get("수량", 0)))
-        form.addRow("수량", self.qty)
-
-        # 단가
-        self.price = QSpinBox()
-        self.price.setRange(0, 999999999)
-        self.price.setGroupSeparatorShown(True)
-        self.price.setValue(to_int(self.history_row.get("단가", 0)))
-        form.addRow("단가", self.price)
-
-        # 금액 (자동계산)
-        self.amount_label = QLabel()
-        self.amount_label.setStyleSheet(
-            "font-size: 14px; font-weight: 700; color: #2563eb; "
-            "padding: 8px; background: #eff6ff; border-radius: 8px;"
-        )
-        self._update_amount()
-        self.qty.valueChanged.connect(self._update_amount)
-        self.price.valueChanged.connect(self._update_amount)
-        form.addRow("금액 (자동)", self.amount_label)
-
-        # 담당자
-        self.staff = QLineEdit()
-        self.staff.setText(self.history_row.get("담당자", ""))
-        form.addRow("담당자", self.staff)
-
-        # 비고
-        self.note = QLineEdit()
-        self.note.setText(self.history_row.get("비고", ""))
-        form.addRow("비고", self.note)
-
-        # 위치
-        self.location_edit = QLineEdit()
-        self.location_edit.setText(self.history_row.get("위치", ""))
-        form.addRow("위치", self.location_edit)
-
-        layout.addLayout(form)
-
-        btns = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
-        btns.accepted.connect(self.accept)
-        btns.rejected.connect(self.reject)
-        layout.addWidget(btns)
-
-    def _update_amount(self):
-        self.amount_label.setText(f"{self.qty.value() * self.price.value():,}원")
-
-    def get_data(self):
-        new_qty = self.qty.value()
-        new_price = self.price.value()
-        return {
-            "일시": self.datetime_edit.text().strip(),
-            "구분": self.kind_combo.currentText(),
-            "브랜드": self.brand_edit.text().strip(),
-            "종류": self.kind_type_edit.text().strip(),
-            "자재명": self.name_edit.text().strip(),
-            "규격": self.spec_edit.text().strip(),
-            "수량": new_qty,
-            "단가": new_price,
-            "금액": new_qty * new_price,
-            "담당자": self.staff.text().strip(),
-            "비고": self.note.text().strip(),
-            "위치": self.location_edit.text().strip(),
-        }
-
-
 class ValuePickerDialog(QDialog):
     def __init__(self, title, values, selected_value="전체", parent=None):
         super().__init__(parent)
@@ -1412,7 +1287,6 @@ class IMSInventoryApp(QMainWindow):
         self.history_filters = {field_name: "전체" for field_name in self.history_filter_fields}
         self.history_filter_buttons = {}
 
-        # debounce timers
         self._stock_search_timer = QTimer(self)
         self._stock_search_timer.setSingleShot(True)
         self._stock_search_timer.timeout.connect(self.on_stock_search_changed)
@@ -1488,7 +1362,6 @@ class IMSInventoryApp(QMainWindow):
         filter_wrap.setSpacing(filter_config["item_spacing"])
         filter_wrap.setContentsMargins(0, 0, 0, 0)
         self.stock_filter_clear_buttons = {}
-        self.stock_filter_clear_spacers = {}
         for field_name in self.stock_filter_fields:
             field_wrap = QWidget()
             field_row = QHBoxLayout(field_wrap)
@@ -1499,20 +1372,17 @@ class IMSInventoryApp(QMainWindow):
             label.setFixedWidth(filter_config["label_width"])
             label.setStyleSheet("font-size: 12px; font-weight: 700; color: #475569;")
 
-            # 🔥 (아마 이 부분이 통째로 지워졌을 겁니다!) 필터 버튼 정의
             button = QPushButton("전체")
             button.setProperty("role", "secondary")
             button.setProperty("compact", True)
             button.setFixedWidth(filter_config["button_min_width"])
             button.clicked.connect(lambda _=False, fn=field_name: self.open_stock_filter_picker(fn))
 
-            # X 버튼 정의
             clear_btn = QPushButton("X")
             clear_btn.setProperty("role", "filter-clear")
             clear_btn.setProperty("compact", True)
             clear_btn.setFixedWidth(filter_config["clear_width"])
 
-            # 숨겨져 있을 때도 X버튼의 원래 공간을 계속 차지하도록 설정
             sp = clear_btn.sizePolicy()
             sp.setRetainSizeWhenHidden(True)
             clear_btn.setSizePolicy(sp)
@@ -1697,7 +1567,6 @@ class IMSInventoryApp(QMainWindow):
         filter_wrap.setSpacing(filter_config["item_spacing"])
         filter_wrap.setContentsMargins(0, 0, 0, 0)
         self.history_filter_clear_buttons = {}
-        self.history_filter_clear_spacers = {}
         for field_name in self.history_filter_fields:
             field_wrap = QWidget()
             field_row = QHBoxLayout(field_wrap)
@@ -1708,20 +1577,17 @@ class IMSInventoryApp(QMainWindow):
             label.setFixedWidth(filter_config["label_width"])
             label.setStyleSheet("font-size: 12px; font-weight: 700; color: #475569;")
 
-            # 필터 버튼 정의
             button = QPushButton("전체")
             button.setProperty("role", "secondary")
             button.setProperty("compact", True)
             button.setFixedWidth(filter_config["button_min_width"])
             button.clicked.connect(lambda _=False, fn=field_name: self.open_history_filter_picker(fn))
 
-            # X 버튼 정의
             clear_btn = QPushButton("X")
             clear_btn.setProperty("role", "filter-clear")
             clear_btn.setProperty("compact", True)
             clear_btn.setFixedWidth(filter_config["clear_width"])
 
-            # 숨겨져도 레이아웃 밀림 방지
             sp = clear_btn.sizePolicy()
             sp.setRetainSizeWhenHidden(True)
             clear_btn.setSizePolicy(sp)
@@ -1796,18 +1662,15 @@ class IMSInventoryApp(QMainWindow):
         bottom.addWidget(history_prev_btn)
         bottom.addWidget(history_next_btn)
         bottom.addStretch()
-        history_edit_btn = QPushButton("변경")
-        history_edit_btn.setProperty("role", "primary-strong")
-        history_edit_btn.clicked.connect(self.edit_selected_history)
-        history_del_btn = QPushButton("삭제")
-        history_del_btn.setProperty("role", "secondary")
-        history_del_btn.clicked.connect(self.delete_selected_history)
-        set_equal_button_widths(history_edit_btn, history_del_btn)
-        bottom.addWidget(history_edit_btn)
-        bottom.addWidget(history_del_btn)
+        
+        history_revert_btn = QPushButton("되돌리기")
+        history_revert_btn.setProperty("role", "secondary")
+        history_revert_btn.clicked.connect(self.revert_selected_history)
+        set_equal_button_widths(history_revert_btn)
+        bottom.addWidget(history_revert_btn)
+        
         layout.addWidget(bottom_row)
         return tab
-
 
     def build_menu(self):
         menu = self.menuBar()
@@ -1848,7 +1711,6 @@ class IMSInventoryApp(QMainWindow):
         for field_name, clear_btn in self.stock_filter_clear_buttons.items():
             is_active = self.stock_filters.get(field_name, "전체") != "전체"
             clear_btn.setVisible(is_active)
-            # 🔥 spacer를 안 쓰므로 self.stock_filter_clear_spacers... 줄은 지워주세요.
 
         self.stock_filter_summary_label.setText(active_filter_summary(self.stock_filters))
 
@@ -1861,7 +1723,6 @@ class IMSInventoryApp(QMainWindow):
         for field_name, clear_btn in self.history_filter_clear_buttons.items():
             is_active = self.history_filters.get(field_name, "전체") != "전체"
             clear_btn.setVisible(is_active)
-            # 🔥 spacer 토글 코드 삭제
 
         self.history_filter_summary_label.setText(active_filter_summary(self.history_filters))
 
@@ -1939,8 +1800,6 @@ class IMSInventoryApp(QMainWindow):
 
         for i, (source_index, row) in enumerate(page_rows):
             no = start + i + 1
-
-            # '재고' 값을 숫자로 변환
             stock_qty = to_int(row.get("재고", 0))
             is_low_stock = stock_qty <= 5
 
@@ -1951,13 +1810,11 @@ class IMSInventoryApp(QMainWindow):
             ]
 
             for col, val in enumerate(values):
-                # 🔥 추가된 부분: 이전에 이 셀에 그려졌던 위젯(QLabel)이 있다면 깨끗하게 지워줍니다.
                 self.stock_table.removeCellWidget(i, col)
 
                 item = QTableWidgetItem(val)
                 item.setData(Qt.UserRole, source_index)
 
-                # 기본 홀짝 배경색 설정 (setItem 용)
                 default_bg = QColor("#f8fafc") if i % 2 == 1 else QColor("#ffffff")
                 item.setBackground(default_bg)
 
@@ -1971,16 +1828,11 @@ class IMSInventoryApp(QMainWindow):
 
                 self.stock_table.setItem(i, col, item)
 
-                # 🔥 핵심: 입출고기록의 '구분' 뱃지처럼 setCellWidget을 사용해 강제로 렌더링
-                # 재고가 5 이하일 때만 위젯(QLabel)을 덮어씌움
                 if col == 5 and is_low_stock:
                     bg_label = QLabel(str(stock_qty))
                     bg_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-
-                    # 🔥 여기에 font-weight: bold; 를 추가했습니다.
                     bg_label.setStyleSheet(
                         "background-color: #fee2e2; color: #111827; font-weight: bold; padding-right: 4px;")
-
                     self.stock_table.setCellWidget(i, col, bg_label)
 
         self.page_label.setText(stock_pagination_summary(self.current_page, pages))
@@ -2099,7 +1951,6 @@ class IMSInventoryApp(QMainWindow):
             return
         item_data = item_dlg.get_data()
         
-        # 신규 품목 입고 등록 시 필수 입력 검증
         required_item_fields = {
             "브랜드": "브랜드",
             "종류": "종류",
@@ -2123,7 +1974,6 @@ class IMSInventoryApp(QMainWindow):
             return
         inbound_data = inout_dlg.get_data()
         
-        # 수량, 단가 필수 검증
         if inbound_data.get("수량", 0) <= 0:
             QMessageBox.warning(self, "필수 입력 확인", "수량을 1개 이상 입력해주세요.")
             return
@@ -2201,63 +2051,27 @@ class IMSInventoryApp(QMainWindow):
             return None
         return item.data(Qt.UserRole)
 
-    def edit_selected_history(self):
+    def revert_selected_history(self):
         history_row = self.get_selected_history_row()
         if history_row is None:
-            QMessageBox.information(self, "안내", "수정할 기록을 먼저 선택하세요.")
+            QMessageBox.information(self, "안내", "되돌릴 기록을 먼저 선택하세요.")
             return
-        dlg = HistoryEditDialog(self, history_row)
-        if not dlg.exec():
-            return
-        data = dlg.get_data()
-        if not data.get("자재명", "").strip():
-            QMessageBox.warning(self, "확인", "품명은 필수입니다.")
-            return
-        if data.get("수량", 0) <= 0:
-            QMessageBox.warning(self, "확인", "수량을 1개 이상 입력해주세요.")
-            return
-        # 원본 self.history_rows에서 해당 row를 찾아 수정
-        target = None
-        for hrow in self.history_rows:
-            if (hrow.get("일시") == history_row.get("일시") and
-                    hrow.get("자재명") == history_row.get("자재명") and
-                    hrow.get("구분") == history_row.get("구분") and
-                    hrow.get("수량") == history_row.get("수량") and
-                    hrow.get("단가") == history_row.get("단가")):
-                target = hrow
-                break
-        if target is None:
-            QMessageBox.warning(self, "오류", "수정할 기록을 찾을 수 없습니다.")
-            return
-        for field in HISTORY_FIELDS:
-            if field in data:
-                target[field] = str(data[field])
-        try:
-            write_csv(HISTORY_CSV, HISTORY_FIELDS, self.history_rows)
-        except Exception as e:
-            QMessageBox.critical(self, "저장 오류", f"기록 저장 중 오류가 발생했습니다:\n{str(e)}")
-            return
-        self.refresh_history_table()
-        QMessageBox.information(self, "완료", "입출고 기록이 수정되었습니다.")
-
-    def delete_selected_history(self):
-        history_row = self.get_selected_history_row()
-        if history_row is None:
-            QMessageBox.information(self, "안내", "삭제할 기록을 먼저 선택하세요.")
-            return
+            
         kind = history_row.get("구분", "")
         item_name = history_row.get("자재명", "")
         date_str = history_row.get("일시", "")
         qty = history_row.get("수량", "")
+        
         reply = QMessageBox.question(
-            self, "삭제 확인",
+            self, "되돌리기 확인",
             f"구분: {kind}\n품명: {item_name}\n일시: {date_str}\n수량: {qty}\n\n"
-            f"이 기록을 삭제하면 되돌릴 수 없습니다.\n정말 삭제하시겠습니까?",
+            f"이 기록을 취소하고 재고 수량을 원상 복구하시겠습니까?\n이 작업은 되돌릴 수 없습니다.",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
         if reply != QMessageBox.Yes:
             return
+            
         target_index = None
         for i, hrow in enumerate(self.history_rows):
             if (hrow.get("일시") == history_row.get("일시") and
@@ -2267,17 +2081,40 @@ class IMSInventoryApp(QMainWindow):
                     hrow.get("단가") == history_row.get("단가")):
                 target_index = i
                 break
+                
         if target_index is None:
-            QMessageBox.warning(self, "오류", "삭제할 기록을 찾을 수 없습니다.")
+            QMessageBox.warning(self, "오류", "되돌릴 기록을 찾을 수 없습니다.")
             return
+
+        target_record = self.history_rows[target_index]
+        hist_qty = to_int(target_record.get("수량", 0))
+        hist_kind = target_record.get("구분", "")
+        
+        for item in self.stock_rows:
+            if (item.get("자재명") == target_record.get("자재명") and 
+                item.get("브랜드") == target_record.get("브랜드") and 
+                item.get("종류") == target_record.get("종류") and 
+                item.get("규격") == target_record.get("규격")):
+                
+                current_qty = to_int(item.get("재고", 0))
+                
+                if hist_kind == "입고":
+                    item["재고"] = str(current_qty - hist_qty)
+                elif hist_kind == "출고":
+                    item["재고"] = str(current_qty + hist_qty)
+                break
+
         del self.history_rows[target_index]
+        
         try:
+            write_csv(STOCK_CSV, STOCK_FIELDS, self.stock_rows)
             write_csv(HISTORY_CSV, HISTORY_FIELDS, self.history_rows)
         except Exception as e:
-            QMessageBox.critical(self, "저장 오류", f"기록 저장 중 오류가 발생했습니다:\n{str(e)}")
+            QMessageBox.critical(self, "저장 오류", f"데이터 저장 중 오류가 발생했습니다:\n{str(e)}")
             return
-        self.refresh_history_table()
-        QMessageBox.information(self, "완료", "입출고 기록이 삭제되었습니다.")
+            
+        self.refresh_all()
+        QMessageBox.information(self, "완료", "해당 기록이 취소되고 재고 수량이 정상 복구되었습니다.")
 
     def open_email_config(self):
         cfg = load_email_config()
@@ -2315,6 +2152,19 @@ class IMSInventoryApp(QMainWindow):
         dlg = InOutDialog("입고 등록", self, item)
         if dlg.exec():
             data = dlg.get_data()
+            
+            # 🔥 사전 차단 로직 (입고)
+            total_amount = data.get("수량", 0) * data.get("단가", 0)
+            if total_amount >= 10000000 or data.get("수량", 0) >= 10000:
+                reply = QMessageBox.warning(
+                    self, "이상 수치 감지", 
+                    f"입력하신 데이터가 너무 큽니다!\n\n수량: {data.get('수량'):,}개\n총 금액: {total_amount:,}원\n\n단위(묶음/낱개)를 혼동하지 않으셨는지 확인해주세요. 이대로 진행하시겠습니까?",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No
+                )
+                if reply == QMessageBox.No:
+                    return
+
             apply_inbound_to_stock(self.stock_rows, self.history_rows, item_index, data)
             try:
                 write_csv(STOCK_CSV, STOCK_FIELDS, self.stock_rows)
@@ -2337,6 +2187,19 @@ class IMSInventoryApp(QMainWindow):
         dlg.price.setValue(0)
         if dlg.exec():
             data = dlg.get_data()
+
+            # 🔥 사전 차단 로직 (출고)
+            total_amount = data.get("수량", 0) * data.get("단가", 0)
+            if total_amount >= 10000000 or data.get("수량", 0) >= 10000:
+                reply = QMessageBox.warning(
+                    self, "이상 수치 감지", 
+                    f"입력하신 데이터가 너무 큽니다!\n\n수량: {data.get('수량'):,}개\n총 금액: {total_amount:,}원\n\n단위(묶음/낱개)를 혼동하지 않으셨는지 확인해주세요. 이대로 진행하시겠습니까?",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No
+                )
+                if reply == QMessageBox.No:
+                    return
+
             try:
                 apply_outbound_to_stock(self.stock_rows, self.history_rows, item_index, data)
             except ValueError as e:
@@ -2377,7 +2240,6 @@ class IMSInventoryApp(QMainWindow):
         if "자재명" not in first:
             QMessageBox.warning(self, "검증 오류", "CSV에 '자재명' 컬럼이 없습니다.\n올바른 재고목록 CSV 파일인지 확인해 주세요.")
             return
-        # 백업
         if os.path.exists(STOCK_CSV):
             backup_path = os.path.join(BASE_DIR, f"재고목록_백업_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
             try:
