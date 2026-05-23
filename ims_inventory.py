@@ -12,6 +12,7 @@ import sys
 import tempfile
 import traceback
 import zipfile
+import re
 from datetime import datetime
 from typing import List, Dict
 
@@ -28,6 +29,35 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QWidget, QHeaderView, QAbstractItemView, QDialogButtonBox,
     QFileDialog, QListWidget, QSizePolicy
 )
+
+# 🔥 [새로 추가됨] 텍스트 길이와 남은 화면 공간을 계산하여 비고칸을 유동적으로 조절하는 커스텀 테이블 클래스
+class AutoExpandTableWidget(QTableWidget):
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.adjust_last_column()
+
+    def adjust_last_column(self):
+        last_idx = self.columnCount() - 1
+        if last_idx < 0:
+            return
+        
+        self.horizontalHeader().setStretchLastSection(False)
+        self.setWordWrap(False)
+        
+        # 실제 내용(글자)이 차지하는 너비 계산 (+16은 텍스트가 너무 벽에 붙지 않게 여유분 추가)
+        content_w = self.sizeHintForColumn(last_idx) + 16
+        
+        # 화면(Viewport)에 남은 빈 공간 계산
+        viewport_w = self.viewport().width()
+        used_w = sum(self.columnWidth(i) for i in range(last_idx))
+        remaining_w = viewport_w - used_w
+        
+        # 컨텐츠 너비, 남은 화면 공간, 기본 최소 너비(160) 중 가장 큰 값으로 적용
+        final_w = max(content_w, remaining_w, 160)
+        
+        # 무한 루프 방지를 위해 값이 다를 때만 변경
+        if self.columnWidth(last_idx) != final_w:
+            self.setColumnWidth(last_idx, final_w)
 
 
 class ItemPickerDialog(QDialog):
@@ -102,7 +132,7 @@ class ItemPickerDialog(QDialog):
         info_row.addStretch()
         layout.addLayout(info_row)
 
-        self.table = QTableWidget()
+        self.table = AutoExpandTableWidget()
         self.table.setColumnCount(10)
         self.table.setHorizontalHeaderLabels([
             "No", "브랜드", "종류", "품명", "규격", "재고", "단위", "평균단가", "위치", "비고"
@@ -184,8 +214,8 @@ class ItemPickerDialog(QDialog):
                 elif col in (0, 1, 2, 4, 8):
                     item.setTextAlignment(Qt.AlignCenter)
                 self.table.setItem(row_no, col, item)
-
-        self.table.horizontalHeader().setStretchLastSection(True)
+                
+        self.table.adjust_last_column()
 
     def select_current(self):
         row = self.table.currentRow()
@@ -415,6 +445,53 @@ def app_stylesheet():
         QMenu::item:selected {
             background: #93c5fd;
             color: #0f172a;
+        }
+        
+        /* 🔥 여기서부터 세로/가로 스크롤바 디자인 추가 🔥 */
+        QScrollBar:vertical {
+            border: none;
+            background: #f8fafc;
+            width: 14px;
+            margin: 0px 0px 0px 0px;
+        }
+        QScrollBar::handle:vertical {
+            background: #94a3b8;
+            min-height: 30px;
+            border-radius: 7px;
+            margin: 2px;
+        }
+        QScrollBar::handle:vertical:hover {
+            background: #64748b;
+        }
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+            height: 0px;
+            background: none;
+        }
+        QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+            background: none;
+        }
+
+        QScrollBar:horizontal {
+            border: none;
+            background: #f8fafc;
+            height: 14px;
+            margin: 0px 0px 0px 0px;
+        }
+        QScrollBar::handle:horizontal {
+            background: #94a3b8;
+            min-width: 30px;
+            border-radius: 7px;
+            margin: 2px;
+        }
+        QScrollBar::handle:horizontal:hover {
+            background: #64748b;
+        }
+        QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+            width: 0px;
+            background: none;
+        }
+        QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+            background: none;
         }
     """
 
@@ -769,7 +846,7 @@ def outbound_shortage_message(item_name, current_qty, request_qty, unit):
         f"품목: {item_name}\n"
         f"재고: {current_qty}{unit_text}\n"
         f"출고요청: {request_qty}{unit_text}\n\n"
-        "출고 수량을 다시 확인해주세요."
+        "출고 수문을 다시 확인해주세요."
     )
 
 
@@ -893,23 +970,6 @@ def build_history_kind_badge(kind):
     return badge
 
 
-def make_history_row(kind, item, qty, unit_price, staff="", note="", now_str=None):
-    return {
-        "일시": now_text(now_str),
-        "구분": kind,
-        "자재명": item.get("자재명", ""),
-        "브랜드": item.get("브랜드", ""),
-        "종류": item.get("종류", ""),
-        "규격": item.get("규격", ""),
-        "수량": str(qty),
-        "단가": str(unit_price),
-        "금액": str(qty * unit_price),
-        "담당자": staff,
-        "비고": note,
-        "위치": item.get("위치", ""),
-    }
-
-
 def apply_inbound_to_stock(stock_rows, history_rows, item_index, inbound_data, now_str=None):
     item = stock_rows[item_index]
     qty_old = to_int(item.get("재고"))
@@ -920,12 +980,20 @@ def apply_inbound_to_stock(stock_rows, history_rows, item_index, inbound_data, n
     new_avg = round_half_up(((qty_old * avg_old) + (qty_in * price_in)) / total_qty) if total_qty else 0
     item["재고"] = str(total_qty)
     item["평균단가"] = str(new_avg)
-    history_rows.append(make_history_row(
-        "입고", item, qty_in, price_in,
-        inbound_data.get("담당자", ""),
-        inbound_data.get("비고", ""),
-        now_str,
-    ))
+    history_rows.append({
+        "일시": now_text(now_str),
+        "구분": "입고",
+        "자재명": item.get("자재명", ""),
+        "브랜드": item.get("브랜드", ""),
+        "종류": item.get("종류", ""),
+        "규격": item.get("규격", ""),
+        "수량": str(qty_in),
+        "단가": str(price_in),
+        "금액": str(qty_in * price_in),
+        "담당자": inbound_data.get("담당자", ""),
+        "비고": inbound_data.get("비고", ""),
+        "위치": item.get("위치", ""),
+    })
     return item
 
 
@@ -942,20 +1010,25 @@ def apply_outbound_to_stock(stock_rows, history_rows, item_index, outbound_data,
             item.get("단위", "")
         ))
     item["재고"] = str(qty_old - qty_out)
-    history_rows.append(make_history_row(
-        "출고", item, qty_out, out_price,
-        outbound_data.get("담당자", ""),
-        outbound_data.get("비고", ""),
-        now_str,
-    ))
+    history_rows.append({
+        "일시": now_text(now_str),
+        "구분": "출고",
+        "자재명": item.get("자재명", ""),
+        "브랜드": item.get("브랜드", ""),
+        "종류": item.get("종류", ""),
+        "규격": item.get("규격", ""),
+        "수량": str(qty_out),
+        "단가": str(out_price),
+        "금액": str(qty_out * out_price),
+        "담당자": outbound_data.get("담당자", ""),
+        "비고": outbound_data.get("비고", ""),
+        "위치": item.get("위치", ""),
+    })
     return item
 
 
 def apply_correction_to_history(history_rows, item, old_qty, new_qty, old_price, new_price, now_str=None):
-    """재고현황에서 직접 수량이나 단가를 변경했을 때 '정정' 이력을 남기는 함수"""
     qty_diff = new_qty - old_qty
-    
-    # 변경된 사항에 따라 비고란에 넣을 메시지 작성
     notes = []
     if qty_diff != 0:
         notes.append(f"재고 정정 ({old_qty}개 -> {new_qty}개)")
@@ -1445,7 +1518,7 @@ class IMSInventoryApp(QMainWindow):
 
         layout.addWidget(toolbar_card)
 
-        self.stock_table = QTableWidget()
+        self.stock_table = AutoExpandTableWidget()
         self.stock_table.setColumnCount(10)
         self.stock_table.setHorizontalHeaderLabels([
             "No", "브랜드", "종류", "품명", "규격", "재고", "단위", "평균단가", "위치", "비고"
@@ -1649,7 +1722,7 @@ class IMSInventoryApp(QMainWindow):
         toolbar_card_layout.addLayout(info)
         layout.addWidget(toolbar_card)
 
-        self.history_table = QTableWidget()
+        self.history_table = AutoExpandTableWidget()
         self.history_table.setProperty("historyTable", True)
         self.history_table.setColumnCount(11)
         self.history_table.setHorizontalHeaderLabels([
@@ -1658,7 +1731,6 @@ class IMSInventoryApp(QMainWindow):
         self.prepare_table(self.history_table)
         self.history_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.history_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.history_table.setWordWrap(False)
         layout.addWidget(self.history_table, 1)
 
         bottom_row = QWidget()
@@ -1721,9 +1793,14 @@ class IMSInventoryApp(QMainWindow):
         table.verticalHeader().setVisible(False)
         table.verticalHeader().setDefaultSectionSize(36)
         table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
-        table.horizontalHeader().setStretchLastSection(True)
+        
+        # 커스텀 테이블(AutoExpandTableWidget)에서 너비를 조절하므로 기본 맞춤 옵션은 끕니다.
+        table.horizontalHeader().setStretchLastSection(False)
+        table.setWordWrap(False)
+        
         table.setSelectionMode(QAbstractItemView.SingleSelection)
         table.setShowGrid(True)
+        table.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
 
     def load_all_data(self):
         ensure_files()
@@ -1867,6 +1944,9 @@ class IMSInventoryApp(QMainWindow):
         self.page_label.setText(stock_pagination_summary(self.current_page, pages))
         self.page_jump_input.setText(str(self.current_page))
         self.stock_count_label.setText(f"등록 품목수: {total}건")
+        
+        # 🔥 추가됨: 테이블 세팅 완료 후 너비 계산
+        self.stock_table.adjust_last_column()
 
     def refresh_history_table(self):
         rows = filter_history_rows(
@@ -1922,6 +2002,9 @@ class IMSInventoryApp(QMainWindow):
         self.history_page_label.setText(stock_pagination_summary(self.current_history_page, pages))
         self.history_page_jump_input.setText(str(self.current_history_page))
         self.history_count_label.setText(f"조회 이력수: {total}건")
+        
+        # 🔥 추가됨: 테이블 세팅 완료 후 너비 계산
+        self.history_table.adjust_last_column()
 
     def get_selected_index(self):
         row = self.stock_table.currentRow()
@@ -2027,7 +2110,6 @@ class IMSInventoryApp(QMainWindow):
             QMessageBox.information(self, "안내", "수정할 자재를 먼저 선택하세요.")
             return
             
-        # 변경 전 원본 데이터 백업
         old_qty = to_int(item.get("재고", 0))
         old_price = to_int(item.get("평균단가", 0))
         
@@ -2038,11 +2120,9 @@ class IMSInventoryApp(QMainWindow):
                 QMessageBox.warning(self, "확인", "품명은 필수입니다.")
                 return
                 
-            # 변경 후 데이터 확인
             new_qty = to_int(new_data.get("재고", 0))
             new_price = to_int(new_data.get("평균단가", 0))
             
-            # 수량이나 단가에 변동이 있다면 '정정' 이력 생성
             if old_qty != new_qty or old_price != new_price:
                 apply_correction_to_history(
                     self.history_rows, item, 
@@ -2050,11 +2130,9 @@ class IMSInventoryApp(QMainWindow):
                     old_price, new_price
                 )
                 
-            # 데이터 업데이트 및 저장
             item.update(new_data)
             try:
                 write_csv(STOCK_CSV, STOCK_FIELDS, self.stock_rows)
-                # 정정 내역이 추가되었으므로 history 파일도 함께 저장
                 write_csv(HISTORY_CSV, HISTORY_FIELDS, self.history_rows)
             except Exception as e:
                 QMessageBox.critical(self, "저장 오류", f"저장 중 오류가 발생했습니다:\n{str(e)}")
@@ -2142,8 +2220,6 @@ class IMSInventoryApp(QMainWindow):
         hist_qty = to_int(target_record.get("수량", 0))
         hist_kind = target_record.get("구분", "")
         
-        import re  # 비고란의 텍스트에서 숫자를 추출하기 위해 정규표현식 모듈 임포트
-        
         for item in self.stock_rows:
             if (item.get("자재명") == target_record.get("자재명") and 
                 item.get("브랜드") == target_record.get("브랜드") and 
@@ -2152,33 +2228,23 @@ class IMSInventoryApp(QMainWindow):
                 
                 current_qty = to_int(item.get("재고", 0))
                 
-                # 1. 입고 취소: 더해졌던 수량만큼 뺌
                 if hist_kind == "입고":
                     item["재고"] = str(current_qty - hist_qty)
-                    
-                # 2. 출고 취소: 빠져나갔던 수량만큼 다시 더함
                 elif hist_kind == "출고":
                     item["재고"] = str(current_qty + hist_qty)
-                    
-                # 3. 정정 취소 (🔥 새롭게 추가된 부분)
                 elif hist_kind == "정정":
                     note = target_record.get("비고", "")
-                    
-                    # 재고 정정 내역 파싱 및 복구: "재고 정정 (예전값 -> 새값)"
                     qty_match = re.search(r"재고 정정 \(([\d,]+)개 -> ([\d,]+)개\)", note)
                     if qty_match:
                         old_q = to_int(qty_match.group(1))
                         new_q = to_int(qty_match.group(2))
-                        # 예전 값과 새 값의 차이만큼 현재 재고에 더하여 복구
                         item["재고"] = str(current_qty + (old_q - new_q))
                         
-                    # 단가 정정 내역 파싱 및 복구: "단가 정정 (예전값 -> 새값)"
                     price_match = re.search(r"단가 정정 \(([\d,]+)원 -> ([\d,]+)원\)", note)
                     if price_match:
                         old_p = to_int(price_match.group(1))
                         new_p = to_int(price_match.group(2))
                         current_price = to_int(item.get("평균단가", 0))
-                        # 예전 값과 새 값의 차이만큼 현재 단가에 더하여 복구
                         item["평균단가"] = str(current_price + (old_p - new_p))
                 break
 
@@ -2231,7 +2297,6 @@ class IMSInventoryApp(QMainWindow):
         if dlg.exec():
             data = dlg.get_data()
             
-            # 🔥 사전 차단 로직 (입고)
             total_amount = data.get("수량", 0) * data.get("단가", 0)
             if total_amount >= 10000000 or data.get("수량", 0) >= 10000:
                 reply = QMessageBox.warning(
@@ -2266,7 +2331,6 @@ class IMSInventoryApp(QMainWindow):
         if dlg.exec():
             data = dlg.get_data()
 
-            # 🔥 사전 차단 로직 (출고)
             total_amount = data.get("수량", 0) * data.get("단가", 0)
             if total_amount >= 10000000 or data.get("수량", 0) >= 10000:
                 reply = QMessageBox.warning(
