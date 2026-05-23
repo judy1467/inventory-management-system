@@ -1,4 +1,3 @@
-#!/Users/mini/.local/bin/python3.11
 # -*- coding: utf-8 -*-
 
 import csv
@@ -1499,28 +1498,35 @@ class IMSInventoryApp(QMainWindow):
             label = QLabel(FILTER_FIELD_LABELS[field_name])
             label.setFixedWidth(filter_config["label_width"])
             label.setStyleSheet("font-size: 12px; font-weight: 700; color: #475569;")
+
+            # 🔥 (아마 이 부분이 통째로 지워졌을 겁니다!) 필터 버튼 정의
             button = QPushButton("전체")
             button.setProperty("role", "secondary")
             button.setProperty("compact", True)
             button.setFixedWidth(filter_config["button_min_width"])
             button.clicked.connect(lambda _=False, fn=field_name: self.open_stock_filter_picker(fn))
+
+            # X 버튼 정의
             clear_btn = QPushButton("X")
             clear_btn.setProperty("role", "filter-clear")
             clear_btn.setProperty("compact", True)
             clear_btn.setFixedWidth(filter_config["clear_width"])
+
+            # 숨겨져 있을 때도 X버튼의 원래 공간을 계속 차지하도록 설정
+            sp = clear_btn.sizePolicy()
+            sp.setRetainSizeWhenHidden(True)
+            clear_btn.setSizePolicy(sp)
+
             clear_btn.setVisible(False)
             clear_btn.clicked.connect(lambda _=False, fn=field_name: self.clear_stock_filter_field(fn))
-            clear_spacer = QWidget()
-            clear_spacer.setFixedWidth(filter_config["clear_width"])
-            clear_spacer.setVisible(True)
+
             self.stock_filter_buttons[field_name] = button
             self.stock_filter_clear_buttons[field_name] = clear_btn
-            self.stock_filter_clear_spacers[field_name] = clear_spacer
 
             field_row.addWidget(label)
             field_row.addWidget(button)
             field_row.addWidget(clear_btn)
-            field_row.addWidget(clear_spacer)
+
             filter_wrap.addWidget(field_wrap)
 
         if filter_config.get("add_trailing_stretch"):
@@ -1701,28 +1707,35 @@ class IMSInventoryApp(QMainWindow):
             label = QLabel(FILTER_FIELD_LABELS[field_name])
             label.setFixedWidth(filter_config["label_width"])
             label.setStyleSheet("font-size: 12px; font-weight: 700; color: #475569;")
+
+            # 필터 버튼 정의
             button = QPushButton("전체")
             button.setProperty("role", "secondary")
             button.setProperty("compact", True)
             button.setFixedWidth(filter_config["button_min_width"])
             button.clicked.connect(lambda _=False, fn=field_name: self.open_history_filter_picker(fn))
+
+            # X 버튼 정의
             clear_btn = QPushButton("X")
             clear_btn.setProperty("role", "filter-clear")
             clear_btn.setProperty("compact", True)
             clear_btn.setFixedWidth(filter_config["clear_width"])
+
+            # 숨겨져도 레이아웃 밀림 방지
+            sp = clear_btn.sizePolicy()
+            sp.setRetainSizeWhenHidden(True)
+            clear_btn.setSizePolicy(sp)
+
             clear_btn.setVisible(False)
             clear_btn.clicked.connect(lambda _=False, fn=field_name: self.clear_history_filter_field(fn))
-            clear_spacer = QWidget()
-            clear_spacer.setFixedWidth(filter_config["clear_width"])
-            clear_spacer.setVisible(True)
+
             self.history_filter_buttons[field_name] = button
             self.history_filter_clear_buttons[field_name] = clear_btn
-            self.history_filter_clear_spacers[field_name] = clear_spacer
 
             field_row.addWidget(label)
             field_row.addWidget(button)
             field_row.addWidget(clear_btn)
-            field_row.addWidget(clear_spacer)
+
             filter_wrap.addWidget(field_wrap)
 
         if filter_config.get("add_trailing_stretch"):
@@ -1831,10 +1844,12 @@ class IMSInventoryApp(QMainWindow):
             value = self.stock_filters.get(field_name, "전체")
             button.setText(truncate_filter_label(value))
             button.setToolTip(value if value != "전체" else "")
+
         for field_name, clear_btn in self.stock_filter_clear_buttons.items():
             is_active = self.stock_filters.get(field_name, "전체") != "전체"
             clear_btn.setVisible(is_active)
-            self.stock_filter_clear_spacers[field_name].setVisible(not is_active)
+            # 🔥 spacer를 안 쓰므로 self.stock_filter_clear_spacers... 줄은 지워주세요.
+
         self.stock_filter_summary_label.setText(active_filter_summary(self.stock_filters))
 
     def refresh_history_filter_buttons(self):
@@ -1842,10 +1857,12 @@ class IMSInventoryApp(QMainWindow):
             value = self.history_filters.get(field_name, "전체")
             button.setText(truncate_filter_label(value))
             button.setToolTip(value if value != "전체" else "")
+
         for field_name, clear_btn in self.history_filter_clear_buttons.items():
             is_active = self.history_filters.get(field_name, "전체") != "전체"
             clear_btn.setVisible(is_active)
-            self.history_filter_clear_spacers[field_name].setVisible(not is_active)
+            # 🔥 spacer 토글 코드 삭제
+
         self.history_filter_summary_label.setText(active_filter_summary(self.history_filters))
 
     def reset_stock_search(self):
@@ -1922,24 +1939,49 @@ class IMSInventoryApp(QMainWindow):
 
         for i, (source_index, row) in enumerate(page_rows):
             no = start + i + 1
+
+            # '재고' 값을 숫자로 변환
+            stock_qty = to_int(row.get("재고", 0))
+            is_low_stock = stock_qty <= 5
+
             values = [
                 str(no), row.get("브랜드", ""), row.get("종류", ""), row.get("자재명", ""),
-                row.get("규격", ""), row.get("재고", "0"), row.get("단위", ""),
+                row.get("규격", ""), str(stock_qty), row.get("단위", ""),
                 f"{to_int(row.get('평균단가', 0)):,}", row.get("위치", ""), row.get("비고", "")
             ]
-            low_stock = to_int(row.get("재고", 0)) <= 5
-            row_bg = QColor("#fee2e2") if low_stock else (QColor("#f8fafc") if i % 2 == 1 else QColor("#ffffff"))
+
             for col, val in enumerate(values):
+                # 🔥 추가된 부분: 이전에 이 셀에 그려졌던 위젯(QLabel)이 있다면 깨끗하게 지워줍니다.
+                self.stock_table.removeCellWidget(i, col)
+
                 item = QTableWidgetItem(val)
                 item.setData(Qt.UserRole, source_index)
-                item.setBackground(row_bg)
+
+                # 기본 홀짝 배경색 설정 (setItem 용)
+                default_bg = QColor("#f8fafc") if i % 2 == 1 else QColor("#ffffff")
+                item.setBackground(default_bg)
+
                 if col in (1, 3):
                     item.setForeground(QColor("#2563eb"))
+
                 if col in (5, 6, 7):
                     item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
                 elif col in (0, 1, 2, 4, 8):
                     item.setTextAlignment(Qt.AlignCenter)
+
                 self.stock_table.setItem(i, col, item)
+
+                # 🔥 핵심: 입출고기록의 '구분' 뱃지처럼 setCellWidget을 사용해 강제로 렌더링
+                # 재고가 5 이하일 때만 위젯(QLabel)을 덮어씌움
+                if col == 5 and is_low_stock:
+                    bg_label = QLabel(str(stock_qty))
+                    bg_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
+                    # 🔥 여기에 font-weight: bold; 를 추가했습니다.
+                    bg_label.setStyleSheet(
+                        "background-color: #fee2e2; color: #111827; font-weight: bold; padding-right: 4px;")
+
+                    self.stock_table.setCellWidget(i, col, bg_label)
 
         self.page_label.setText(stock_pagination_summary(self.current_page, pages))
         self.page_jump_input.setText(str(self.current_page))
