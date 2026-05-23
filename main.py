@@ -713,18 +713,38 @@ class IMSInventoryApp(QMainWindow):
         if index is None:
             QMessageBox.information(self, "안내", "삭제할 자재를 먼저 선택하세요.")
             return
-        item_name = self.stock_rows[index].get("자재명", "")
-        reply = QMessageBox.question(self, "삭제 확인", f"품목: {item_name}\n경고: 이 품목을 삭제하면 되돌릴 수 없습니다.\n정말로 삭제하시겠습니까?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            
+        item = self.stock_rows[index]
+        item_name = item.get("자재명", "")
+        current_qty = to_int(item.get("재고", 0))
+        
+        # 🔥 추가된 유효성 검사: 재고가 0보다 크면 삭제 원천 차단
+        if current_qty > 0:
+            QMessageBox.warning(
+                self, 
+                "삭제 불가", 
+                f"품목: {item_name}\n현재 재고: {current_qty}개\n\n재고가 남아있는 품목은 삭제할 수 없습니다.\n먼저 출고 처리하여 재고를 0으로 만들어주세요."
+            )
+            return
+
+        reply = QMessageBox.question(
+            self, "삭제 확인", 
+            f"품목: {item_name}\n경고: 이 품목을 삭제하면 되돌릴 수 없습니다.\n정말로 삭제하시겠습니까?", 
+            QMessageBox.Yes | QMessageBox.No, 
+            QMessageBox.No
+        )
         if reply != QMessageBox.Yes: return
+        
         del self.stock_rows[index]
         try:
             write_csv(STOCK_CSV, STOCK_FIELDS, self.stock_rows)
         except Exception as e:
             QMessageBox.critical(self, "저장 오류", f"재고 목록 저장 중 오류가 발생했습니다:\n{str(e)}")
             return
+            
         self.current_page = 1
         self.refresh_all()
-        QMessageBox.information(self, "완료", "선택한 품목이 삭제되었습니다.")
+        QMessageBox.information(self, "완료", "선택한 품목이 장부에서 삭제되었습니다.")
 
     def get_selected_history_index(self):
         row = self.history_table.currentRow()
