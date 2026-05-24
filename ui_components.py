@@ -82,7 +82,7 @@ def build_fixed_palette():
     return palette
 
 def stock_filter_layout_config():
-    return { "layout_mode": "row", "add_trailing_stretch": True, "item_spacing": 88, "row_spacing": 16, "button_min_width": 93, "clear_width": 20, "label_width": 28, "field_right_margin": 0, "card_spacing": 10 }
+    return { "layout_mode": "row", "add_trailing_stretch": True, "item_spacing": 88, "row_spacing": 16, "button_min_width": 93, "clear_width": 20, "label_width": 37, "field_right_margin": 0, "card_spacing": 10 }
 
 def compact_bottom_bar_layout(layout):
     layout.setContentsMargins(0, 0, 0, 0)

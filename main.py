@@ -885,13 +885,32 @@ class IMSInventoryApp(QMainWindow):
             return
 
         target_record = self.history_rows[target_index]
-        hist_qty, hist_kind = to_int(target_record.get("수량", 0)), target_record.get("구분", "")
+        hist_qty = to_int(target_record.get("수량", 0))
+        hist_price = to_int(target_record.get("단가", 0)) # 🔥 취소할 기록의 단가 확보
+        hist_kind = target_record.get("구분", "")
         
         for item in self.stock_rows:
             if item.get("자재명") == target_record.get("자재명") and item.get("브랜드") == target_record.get("브랜드") and item.get("종류") == target_record.get("종류") and item.get("규격") == target_record.get("규격"):
                 current_qty = to_int(item.get("재고", 0))
-                if hist_kind == "입고": item["재고"] = str(current_qty - hist_qty)
-                elif hist_kind == "출고": item["재고"] = str(current_qty + hist_qty)
+                current_avg_price = to_int(item.get("평균단가", 0)) # 🔥 현재 재고의 평균단가 확보
+                
+                if hist_kind == "입고":
+                    new_qty = current_qty - hist_qty
+                    if new_qty > 0:
+                        # 🔥 평균단가 역산 로직: (현재총액 - 취소할입고총액) / 남은수량
+                        current_total = current_qty * current_avg_price
+                        revert_total = hist_qty * hist_price
+                        new_avg = round_half_up((current_total - revert_total) / new_qty)
+                        item["평균단가"] = str(new_avg)
+                    else:
+                        # 재고가 0이 되면 평균단가도 초기화
+                        item["평균단가"] = "0"
+                    item["재고"] = str(new_qty)
+                    
+                elif hist_kind == "출고":
+                    # 출고 취소는 평균단가에 영향을 주지 않으므로 수량만 복구
+                    item["재고"] = str(current_qty + hist_qty)
+                    
                 elif hist_kind == "정정":
                     note = target_record.get("비고", "")
                     
