@@ -65,7 +65,7 @@ python -m PyInstaller ^
     --onedir ^
     --clean ^
     --noconfirm ^
-    ims_inventory.py
+    main.py
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
